@@ -75,6 +75,8 @@ export default function App() {
   const [lat, setLat] = useState(18.0)
   const [lon, setLon] = useState(88.0)
   const [date, setDate] = useState('2020-05-15')
+  const [depth, setDepth] = useState(137.5) // Continuous probe depth (Adjustable)
+  const [maxDepthRange, setMaxDepthRange] = useState(1000) // 500m | 1000m | 2000m
   const [activeScenarioId, setActiveScenarioId] = useState('amphan')
   
   // Missing satellite data simulation
@@ -276,12 +278,16 @@ export default function App() {
       })
       .catch(err => {
         console.warn('Backend unavailable, generating local physics profile...', err)
-        const depths = [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000]
+        // High-precision depth array spanning up to maxDepthRange
+        const depths = []
+        for (let d = 0; d <= maxDepthRange; d += (maxDepthRange <= 500 ? 10 : maxDepthRange <= 1000 ? 25 : 50)) {
+          depths.push(d)
+        }
         const sst = 29.5 - (lat - 10) * 0.18 + (lon - 70) * 0.05
         const temps = depths.map(d => {
           if (d < 45) return sst - d * 0.012
-          const thermocline = sst - (sst - 5.0) / (1 + Math.exp(-(d - 130) / 45))
-          return Math.max(4.2, thermocline)
+          const thermocline = sst - (sst - 3.8) / (1 + Math.exp(-(d - 130) / 45))
+          return Math.max(3.8, thermocline)
         })
         const uncert = depths.map(d => 0.22 + (d / 1000) * 0.18 + activeDropoutCount * 0.14)
         const mockData = {
@@ -295,10 +301,27 @@ export default function App() {
         setNominalProfileData(mockData)
         setLoading(false)
       })
-  }, [lat, lon, date, missingSST, missingSSS, missingSSH, missingWind])
+  }, [lat, lon, date, missingSST, missingSSS, missingSSH, missingWind, maxDepthRange])
+
+  // ── Real-time Probe Calculation for Depth Slider ───────────────────────────
+  const currentDepthProbe = useMemo(() => {
+    const sst = thermoMetrics.surfaceTemp || 29.5
+    const thermoclineD = thermoMetrics.d20 || 120.0
+    const tVal = sst - (sst - 3.8) / (1.0 + Math.exp(-(depth - thermoclineD) / 42.0))
+    const gradVal = -((sst - 3.8) / 42.0) * Math.exp(-(depth - thermoclineD) / 42.0) / Math.pow(1.0 + Math.exp(-(depth - thermoclineD) / 42.0), 2)
+    const uncertVal = 0.24 + (depth / 1000.0) * 0.18 + activeDropoutCount * 0.15
+    const soundSpeed = 1448.96 + 4.591 * tVal - 0.05304 * Math.pow(tVal, 2) + 0.0163 * depth + 1.34 * (34.5 - 35.0)
+
+    return {
+      depth: Math.round(depth * 10) / 10,
+      temperature: Math.max(3.8, Math.round(tVal * 100) / 100),
+      gradient: Math.round(gradVal * 10000) / 10000,
+      uncertainty: Math.round(uncertVal * 100) / 100,
+      soundVelocity: Math.round(soundSpeed * 10) / 10
+    }
+  }, [depth, thermoMetrics, activeDropoutCount])
 
   // ── Synchronous Dynamic 2D Zonal Transect Model ────────────────────────────
-  // Evaluates North Indian Ocean thermal cross-section across 45°E -> 105°E at latitude 'lat'
   const transectModel = useMemo(() => {
     const numLons = 41
     const numDepths = 35
@@ -308,7 +331,7 @@ export default function App() {
     }
     const depths = []
     for (let j = 0; j < numDepths; j++) {
-      depths.push(j * (1000.0 / (numDepths - 1)))
+      depths.push(j * (maxDepthRange / (numDepths - 1)))
     }
 
     const grid = []
@@ -319,20 +342,15 @@ export default function App() {
       const row = []
       for (let i = 0; i < numLons; i++) {
         const l = longitudes[i]
-        // Physics of North Indian Ocean:
-        // Western Arabian Sea (45°E-65°E): Somali Upwelling lifts deep cold water (shallow D20 ~ 55m-80m)
-        // Central Indian Ocean (70°E-82°E): Intermediate thermocline (~110m)
-        // Bay of Bengal (85°E-100°E): Freshwater barrier layer traps heat, deep warm pool (D20 ~ 135m-155m)
         const sst = 27.2 + (l - 45.0) * 0.055 - (lat - 10.0) * 0.06
         const d20Depth = 60.0 + (l - 45.0) * 1.45 + (lat > 14 && l > 85 ? 15.0 : 0.0)
         const thermoclineSlope = 38.0 + (l - 45.0) * 0.25
-        const temp = sst - (sst - 4.2) / (1.0 + Math.exp(-(d - d20Depth) / thermoclineSlope))
-        row.push(Math.max(4.0, Math.round(temp * 100) / 100))
+        const temp = sst - (sst - 3.8) / (1.0 + Math.exp(-(d - d20Depth) / thermoclineSlope))
+        row.push(Math.max(3.8, Math.round(temp * 100) / 100))
       }
       grid.push(row)
     }
 
-    // Compute exact D20 isotherm depth contour for each longitude
     for (let i = 0; i < numLons; i++) {
       const l = longitudes[i]
       const d20Val = 60.0 + (l - 45.0) * 1.45 + (lat > 14 && l > 85 ? 15.0 : 0.0)
@@ -340,11 +358,11 @@ export default function App() {
     }
 
     return { longitudes, depths, grid, d20_contour }
-  }, [lat, date])
+  }, [lat, date, maxDepthRange])
 
-  // Helper colormap function for thermal cross section (4°C to 30°C)
+  // Colormap function (3.8°C to 30°C)
   const getOceanTempColor = (temp) => {
-    const norm = Math.max(0, Math.min(1, (temp - 4.0) / 26.0))
+    const norm = Math.max(0, Math.min(1, (temp - 3.8) / 26.2))
     let r = 0, g = 0, b = 0
     if (norm < 0.25) {
       const t = norm / 0.25
@@ -658,7 +676,7 @@ export default function App() {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6' }}>
             <div>
-              <strong style={{ color: '#fff' }}>1. Quick Ocean Scenarios:</strong> Click any of the 5 scenario cards below to load pre-configured regional dynamics (e.g. Cyclone Amphan, Somali Upwelling).
+              <strong style={{ color: '#fff' }}>1. Interactive Depth Slider:</strong> Move the continuous depth slider in Module 1 to probe temperatures from surface down to 2000m.
             </div>
             <div>
               <strong style={{ color: '#fff' }}>2. Dedicated Left Navigation:</strong> Select any of the 5 modules on the left to immediately inspect the continuous 3D profile, map, cyclone heat, 2D transect, or ARGO matchup.
@@ -817,7 +835,7 @@ export default function App() {
           </div>
 
           {[
-            { id: 'overview', icon: '📊', label: '1. 3D Thermal Inversion Profile', desc: 'Continuous depth inversion (0–1000m) with ±1σ uncertainty' },
+            { id: 'overview', icon: '📊', label: '1. 3D Thermal Inversion Profile', desc: 'Continuous depth inversion (0–2000m) with ±1σ uncertainty' },
             { id: 'map_sensors', icon: '🗺️', label: '2. Ocean Basin Map & Sensor Lab', desc: 'Interactive domain with satellite outage simulator' },
             { id: 'cyclone', icon: '🎯', label: '3. Cyclone Heat (TCHP) & Marine Heatwaves', desc: 'Upper-ocean heat content & cyclone intensification' },
             { id: 'transect', icon: '🌊', label: '4. 2D Basin Zonal Transect', desc: 'Depth-longitude cross-section across 45°E–105°E' },
@@ -879,46 +897,93 @@ export default function App() {
             {/* ── DASHBOARD 1: 3D SUBSURFACE THERMAL INVERSION ───────────────── */}
             {activeDashboard === 'overview' && (
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
                   <div>
                     <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff' }}>
-                      Continuous Temperature Inversion Profile (0–1000m)
+                      Continuous Temperature Inversion Profile (0–{maxDepthRange}m)
                     </h3>
                     <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
                       Active Coordinates: <span style={{ color: '#00f0ff', fontFamily: 'JetBrains Mono', fontWeight: 'bold' }}>{lat}°N, {lon}°E</span> ({profileData?.region || 'North Indian Ocean'}) • Date: <span style={{ color: '#00f0ff', fontFamily: 'JetBrains Mono' }}>{date}</span>
                     </p>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#cbd5e1', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={showUncertainty}
-                        onChange={e => setShowUncertainty(e.target.checked)}
-                        style={{ accentColor: '#00f0ff' }}
-                      />
-                      <span>±1σ Uncertainty Band</span>
-                    </label>
+                  {/* Max Depth Range Selector */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'bold' }}>Max Depth Range:</span>
+                    {[500, 1000, 2000].map(r => (
+                      <button
+                        key={r}
+                        onClick={() => {
+                          setMaxDepthRange(r)
+                          if (depth > r) setDepth(r)
+                        }}
+                        style={{
+                          background: maxDepthRange === r ? 'rgba(0,240,255,0.22)' : 'rgba(255,255,255,0.06)',
+                          color: maxDepthRange === r ? '#00f0ff' : '#cbd5e1',
+                          border: `1px solid ${maxDepthRange === r ? '#00f0ff' : 'rgba(255,255,255,0.12)'}`,
+                          padding: '4px 10px',
+                          borderRadius: '14px',
+                          fontSize: '11px',
+                          fontWeight: 'bold',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {r}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#cbd5e1', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={compareNominal}
-                        onChange={e => setCompareNominal(e.target.checked)}
-                        style={{ accentColor: '#00f0ff' }}
-                      />
-                      <span>Dual Baseline Overlay</span>
+                {/* Depth Probe Precision Slider Bar */}
+                <div style={{ background: 'rgba(0,240,255,0.05)', padding: '12px 16px', borderRadius: '10px', border: '1px solid rgba(0,240,255,0.25)', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#00f0ff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>📏</span> Continuous Depth Inversion Probe (Slide to increase/decrease depth):
                     </label>
+                    <span style={{ fontSize: '20px', fontWeight: '800', color: '#ffffff', fontFamily: 'JetBrains Mono' }}>
+                      {depth.toFixed(1)} m
+                    </span>
+                  </div>
 
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#cbd5e1', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={showArgo}
-                        onChange={e => setShowArgo(e.target.checked)}
-                        style={{ accentColor: '#10b981' }}
-                      />
-                      <span>ARGO CTD Float Matchup</span>
-                    </label>
+                  <input
+                    type="range"
+                    min="0.0"
+                    max={maxDepthRange}
+                    step="0.5"
+                    value={depth}
+                    onChange={e => setDepth(parseFloat(e.target.value))}
+                    style={{ width: '100%', marginBottom: '12px', accentColor: '#00f0ff' }}
+                  />
+
+                  {/* Real-time Probe Telemetry Values */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+                    <div style={{ background: 'rgba(0,0,0,0.4)', padding: '8px 12px', borderRadius: '8px' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Predicted Temp T(z)</div>
+                      <div style={{ color: '#00f0ff', fontSize: '16px', fontWeight: 'bold', fontFamily: 'JetBrains Mono', marginTop: '2px' }}>
+                        {currentDepthProbe.temperature} °C
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'rgba(0,0,0,0.4)', padding: '8px 12px', borderRadius: '8px' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Vertical Gradient ∂T/∂z</div>
+                      <div style={{ color: '#10b981', fontSize: '16px', fontWeight: 'bold', fontFamily: 'JetBrains Mono', marginTop: '2px' }}>
+                        {currentDepthProbe.gradient} °C/m
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'rgba(0,0,0,0.4)', padding: '8px 12px', borderRadius: '8px' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Uncertainty (±1σ)</div>
+                      <div style={{ color: '#f59e0b', fontSize: '16px', fontWeight: 'bold', fontFamily: 'JetBrains Mono', marginTop: '2px' }}>
+                        ±{currentDepthProbe.uncertainty} °C
+                      </div>
+                    </div>
+
+                    <div style={{ background: 'rgba(0,0,0,0.4)', padding: '8px 12px', borderRadius: '8px' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', textTransform: 'uppercase' }}>Sound Velocity C(z)</div>
+                      <div style={{ color: '#a855f7', fontSize: '16px', fontWeight: 'bold', fontFamily: 'JetBrains Mono', marginTop: '2px' }}>
+                        {currentDepthProbe.soundVelocity} m/s
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -945,8 +1010,8 @@ export default function App() {
                       })}
 
                       {/* Depth Grid Lines */}
-                      {[0, 200, 400, 600, 800, 1000].map(d => {
-                        const y = 20 + (d / 1000) * 320
+                      {[0, Math.round(maxDepthRange * 0.2), Math.round(maxDepthRange * 0.4), Math.round(maxDepthRange * 0.6), Math.round(maxDepthRange * 0.8), maxDepthRange].map(d => {
+                        const y = 20 + (d / maxDepthRange) * 320
                         return (
                           <g key={d}>
                             <line x1={60} y1={y} x2={640} y2={y} stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
@@ -957,7 +1022,7 @@ export default function App() {
 
                       {/* D20 Thermocline Line */}
                       {(() => {
-                        const d20Y = 20 + (thermoMetrics.d20 / 1000) * 320
+                        const d20Y = 20 + (thermoMetrics.d20 / maxDepthRange) * 320
                         return (
                           <g>
                             <line x1={60} y1={d20Y} x2={640} y2={d20Y} stroke="#00f0ff" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.7" />
@@ -969,7 +1034,7 @@ export default function App() {
 
                       {/* MLD Line */}
                       {(() => {
-                        const mldY = 20 + (thermoMetrics.mld / 1000) * 320
+                        const mldY = 20 + (thermoMetrics.mld / maxDepthRange) * 320
                         return (
                           <g>
                             <line x1={60} y1={mldY} x2={640} y2={mldY} stroke="#a855f7" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.7" />
@@ -979,19 +1044,33 @@ export default function App() {
                         )
                       })()}
 
+                      {/* Active Probe Line from Depth Slider */}
+                      {(() => {
+                        const probeY = 20 + (depth / maxDepthRange) * 320
+                        const probeX = 60 + (currentDepthProbe.temperature / 32) * 580
+                        return (
+                          <g>
+                            <line x1={60} y1={probeY} x2={640} y2={probeY} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="3 3" opacity="0.8" />
+                            <circle cx={probeX} cy={probeY} r="6" fill="#f59e0b" stroke="#ffffff" strokeWidth="2" style={{ filter: 'drop-shadow(0 0 8px #f59e0b)' }} />
+                            <rect x={645} y={probeY - 9} width="48" height="18" rx="4" fill="rgba(245,158,11,0.25)" stroke="#f59e0b" />
+                            <text x={669} y={probeY + 3} fill="#f59e0b" fontSize="9" textAnchor="middle" fontWeight="bold">{Math.round(depth)}m</text>
+                          </g>
+                        )
+                      })()}
+
                       {/* Uncertainty Ribbon */}
                       {showUncertainty && profileData.uncertainties && (() => {
                         const ptsUpper = profileData.depths.map((d, i) => {
                           const temp = profileData.temperatures[i] + profileData.uncertainties[i]
                           const x = 60 + (temp / 32) * 580
-                          const y = 20 + (d / 1000) * 320
+                          const y = 20 + (d / maxDepthRange) * 320
                           return `${x},${y}`
                         })
                         const ptsLower = profileData.depths.slice().reverse().map((d) => {
                           const i = profileData.depths.indexOf(d)
                           const temp = profileData.temperatures[i] - profileData.uncertainties[i]
                           const x = 60 + (temp / 32) * 580
-                          const y = 20 + (d / 1000) * 320
+                          const y = 20 + (d / maxDepthRange) * 320
                           return `${x},${y}`
                         })
                         const pathD = `M ${ptsUpper.join(' L ')} L ${ptsLower.join(' L ')} Z`
@@ -1003,7 +1082,7 @@ export default function App() {
                         const pathPoints = nominalProfileData.depths.map((d, i) => {
                           const temp = nominalProfileData.temperatures[i]
                           const x = 60 + (temp / 32) * 580
-                          const y = 20 + (d / 1000) * 320
+                          const y = 20 + (d / maxDepthRange) * 320
                           return `${x},${y}`
                         }).join(' L ')
                         return (
@@ -1023,7 +1102,7 @@ export default function App() {
                         const pathPoints = profileData.depths.map((d, i) => {
                           const temp = profileData.temperatures[i]
                           const x = 60 + (temp / 32) * 580
-                          const y = 20 + (d / 1000) * 320
+                          const y = 20 + (d / maxDepthRange) * 320
                           return `${x},${y}`
                         }).join(' L ')
                         return (
@@ -1041,7 +1120,7 @@ export default function App() {
                       {showArgo && profileData.depths.map((d, i) => {
                         const temp = profileData.temperatures[i] + (Math.sin(d / 40) * 0.12 - 0.04)
                         const x = 60 + (temp / 32) * 580
-                        const y = 20 + (d / 1000) * 320
+                        const y = 20 + (d / maxDepthRange) * 320
                         return (
                           <g key={i}>
                             <circle cx={x} cy={y} r="4" fill="#10b981" stroke="#ffffff" strokeWidth="1.5" />
@@ -1067,10 +1146,10 @@ export default function App() {
                         onMouseMove={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect()
                           const relY = e.clientY - rect.top
-                          const normD = Math.max(0, Math.min(1000, (relY / rect.height) * 1000))
-                          const tVal = thermoMetrics.surfaceTemp - (normD / 1000) * (thermoMetrics.surfaceTemp - 5.0)
+                          const normD = Math.max(0, Math.min(maxDepthRange, (relY / rect.height) * maxDepthRange))
+                          const tVal = thermoMetrics.surfaceTemp - (normD / maxDepthRange) * (thermoMetrics.surfaceTemp - 3.8)
                           const x = 60 + (tVal / 32) * 580
-                          const y = 20 + (normD / 1000) * 320
+                          const y = 20 + (normD / maxDepthRange) * 320
                           setHoveredData({ depth: Math.round(normD), temp: Math.round(tVal * 100) / 100, x, y })
                         }}
                         onMouseLeave={() => setHoveredData(null)}
@@ -1336,7 +1415,7 @@ export default function App() {
               </div>
             )}
 
-            {/* ── DASHBOARD 4: 2D BASIN TRANSECT (HIGH-FIDELITY GUARANTEED SVG) ── */}
+            {/* ── DASHBOARD 4: 2D BASIN TRANSECT ─────────────────────────────── */}
             {activeDashboard === 'transect' && (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
@@ -1370,12 +1449,12 @@ export default function App() {
                         const normX = Math.max(0, Math.min(1, (relX - 55) / (rect.width - 70)))
                         const normY = Math.max(0, Math.min(1, (relY - 15) / (rect.height - 35)))
                         const calcLon = Math.round((45.0 + normX * 60.0) * 10) / 10
-                        const calcDepth = Math.round(normY * 1000.0)
+                        const calcDepth = Math.round(normY * maxDepthRange)
                         
                         const sst = 27.2 + (calcLon - 45.0) * 0.055 - (lat - 10.0) * 0.06
                         const d20Val = 60.0 + (calcLon - 45.0) * 1.45 + (lat > 14 && calcLon > 85 ? 15.0 : 0.0)
                         const thermoclineSlope = 38.0 + (calcLon - 45.0) * 0.25
-                        const temp = sst - (sst - 4.2) / (1.0 + Math.exp(-(calcDepth - d20Val) / thermoclineSlope))
+                        const temp = sst - (sst - 3.8) / (1.0 + Math.exp(-(calcDepth - d20Val) / thermoclineSlope))
                         
                         setHoveredTransect({
                           lon: calcLon,
@@ -1421,8 +1500,8 @@ export default function App() {
                       })()}
 
                       {/* Depth Sounding Axis Lines */}
-                      {[0, 200, 400, 600, 800, 1000].map(d => {
-                        const y = 15 + (d / 1000) * (340 - 35)
+                      {[0, Math.round(maxDepthRange * 0.2), Math.round(maxDepthRange * 0.4), Math.round(maxDepthRange * 0.6), Math.round(maxDepthRange * 0.8), maxDepthRange].map(d => {
+                        const y = 15 + (d / maxDepthRange) * (340 - 35)
                         return (
                           <g key={d}>
                             <line x1={55} y1={y} x2={745} y2={y} stroke="rgba(255,255,255,0.12)" strokeDasharray="3 3" />
@@ -1446,7 +1525,7 @@ export default function App() {
                         const pts = transectModel.longitudes.map((l, i) => {
                           const x = 55 + ((l - 45) / 60) * (745 - 55)
                           const dVal = transectModel.d20_contour[i]
-                          const y = 15 + (dVal / 1000) * (340 - 35)
+                          const y = 15 + (dVal / maxDepthRange) * (340 - 35)
                           return `${x},${y}`
                         })
                         return (
@@ -1460,8 +1539,8 @@ export default function App() {
                               style={{ filter: 'drop-shadow(0 0 6px rgba(255,255,255,0.8))' }}
                             />
                             {/* D20 Label Tag in Bay of Bengal */}
-                            <rect x={660} y={15 + (transectModel.d20_contour[transectModel.d20_contour.length - 3] / 1000) * (340 - 35) - 12} width="46" height="20" rx="4" fill="rgba(0,0,0,0.85)" stroke="#00f0ff" />
-                            <text x={683} y={15 + (transectModel.d20_contour[transectModel.d20_contour.length - 3] / 1000) * (340 - 35) + 2} fill="#00f0ff" fontSize="10" fontWeight="bold" textAnchor="middle">D20</text>
+                            <rect x={660} y={15 + (transectModel.d20_contour[transectModel.d20_contour.length - 3] / maxDepthRange) * (340 - 35) - 12} width="46" height="20" rx="4" fill="rgba(0,0,0,0.85)" stroke="#00f0ff" />
+                            <text x={683} y={15 + (transectModel.d20_contour[transectModel.d20_contour.length - 3] / maxDepthRange) * (340 - 35) + 2} fill="#00f0ff" fontSize="10" fontWeight="bold" textAnchor="middle">D20</text>
                           </g>
                         )
                       })()}
