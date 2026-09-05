@@ -96,8 +96,6 @@ export default function App() {
   // Prediction Data
   const [profileData, setProfileData] = useState(null)
   const [nominalProfileData, setNominalProfileData] = useState(null)
-  const [transectData, setTransectData] = useState(null)
-  const [transectLoading, setTransectLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
@@ -278,7 +276,6 @@ export default function App() {
       })
       .catch(err => {
         console.warn('Backend unavailable, generating local physics profile...', err)
-        // Fallback local generation
         const depths = [0, 5, 10, 20, 30, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000]
         const sst = 29.5 - (lat - 10) * 0.18 + (lon - 70) * 0.05
         const temps = depths.map(d => {
@@ -300,45 +297,78 @@ export default function App() {
       })
   }, [lat, lon, date, missingSST, missingSSS, missingSSH, missingWind])
 
-  // ── Fetch 2D Zonal Transect Data ───────────────────────────────────────────
-  const fetchTransectData = async () => {
-    setTransectLoading(true)
-    try {
-      const res = await axios.get(`${API_BASE}/api/transect`, {
-        params: {
-          lat: parseFloat(lat),
-          date,
-          lon_start: 45.0,
-          lon_end: 105.0,
-          num_points: 31
-        }
-      })
-      setTransectData(res.data)
-    } catch (err) {
-      console.warn('Using local high-fidelity transect generation...', err)
-      const lons = []
-      for (let l = 45; l <= 105; l += 2) lons.push(l)
-      const depths = [0, 10, 25, 50, 75, 100, 150, 200, 300, 400, 600, 800, 1000]
-      const grid = depths.map(d => {
-        return lons.map(l => {
-          const sst = 27.2 + (l - 45) * 0.065
-          const thermoclineD = 65 + (l - 45) * 1.35
-          const t = sst - (sst - 4.5) / (1 + Math.exp(-(d - thermoclineD) / 42))
-          return Math.max(4.0, Math.round(t * 100) / 100)
-        })
-      })
-      const d20 = lons.map(l => Math.round((65 + (l - 45) * 1.35) * 10) / 10)
-      setTransectData({ lat, date, longitudes: lons, depths, grid, d20_contour: d20 })
-    } finally {
-      setTransectLoading(false)
+  // ── Synchronous Dynamic 2D Zonal Transect Model ────────────────────────────
+  // Evaluates North Indian Ocean thermal cross-section across 45°E -> 105°E at latitude 'lat'
+  const transectModel = useMemo(() => {
+    const numLons = 41
+    const numDepths = 35
+    const longitudes = []
+    for (let i = 0; i < numLons; i++) {
+      longitudes.push(45.0 + i * (60.0 / (numLons - 1)))
     }
-  }
+    const depths = []
+    for (let j = 0; j < numDepths; j++) {
+      depths.push(j * (1000.0 / (numDepths - 1)))
+    }
 
-  useEffect(() => {
-    if (activeDashboard === 'transect') {
-      fetchTransectData()
+    const grid = []
+    const d20_contour = []
+
+    for (let j = 0; j < numDepths; j++) {
+      const d = depths[j]
+      const row = []
+      for (let i = 0; i < numLons; i++) {
+        const l = longitudes[i]
+        // Physics of North Indian Ocean:
+        // Western Arabian Sea (45°E-65°E): Somali Upwelling lifts deep cold water (shallow D20 ~ 55m-80m)
+        // Central Indian Ocean (70°E-82°E): Intermediate thermocline (~110m)
+        // Bay of Bengal (85°E-100°E): Freshwater barrier layer traps heat, deep warm pool (D20 ~ 135m-155m)
+        const sst = 27.2 + (l - 45.0) * 0.055 - (lat - 10.0) * 0.06
+        const d20Depth = 60.0 + (l - 45.0) * 1.45 + (lat > 14 && l > 85 ? 15.0 : 0.0)
+        const thermoclineSlope = 38.0 + (l - 45.0) * 0.25
+        const temp = sst - (sst - 4.2) / (1.0 + Math.exp(-(d - d20Depth) / thermoclineSlope))
+        row.push(Math.max(4.0, Math.round(temp * 100) / 100))
+      }
+      grid.push(row)
     }
-  }, [activeDashboard, lat, date])
+
+    // Compute exact D20 isotherm depth contour for each longitude
+    for (let i = 0; i < numLons; i++) {
+      const l = longitudes[i]
+      const d20Val = 60.0 + (l - 45.0) * 1.45 + (lat > 14 && l > 85 ? 15.0 : 0.0)
+      d20_contour.push(Math.round(d20Val * 10) / 10)
+    }
+
+    return { longitudes, depths, grid, d20_contour }
+  }, [lat, date])
+
+  // Helper colormap function for thermal cross section (4°C to 30°C)
+  const getOceanTempColor = (temp) => {
+    const norm = Math.max(0, Math.min(1, (temp - 4.0) / 26.0))
+    let r = 0, g = 0, b = 0
+    if (norm < 0.25) {
+      const t = norm / 0.25
+      r = Math.floor(10 + 20 * t)
+      g = Math.floor(30 + 100 * t)
+      b = Math.floor(120 + 135 * t)
+    } else if (norm < 0.5) {
+      const t = (norm - 0.25) / 0.25
+      r = Math.floor(30 + 10 * t)
+      g = Math.floor(130 + 100 * t)
+      b = Math.floor(255 - 150 * t)
+    } else if (norm < 0.75) {
+      const t = (norm - 0.5) / 0.25
+      r = Math.floor(40 + 200 * t)
+      g = Math.floor(230 + 10 * t)
+      b = Math.floor(105 - 90 * t)
+    } else {
+      const t = (norm - 0.75) / 0.25
+      r = Math.floor(240 + 15 * t)
+      g = Math.floor(240 - 180 * t)
+      b = Math.floor(15 + 10 * t)
+    }
+    return `rgb(${r}, ${g}, ${b})`
+  }
 
   // ── Thermocline Physical Diagnostics ───────────────────────────────────────
   const thermoMetrics = useMemo(() => {
@@ -522,96 +552,6 @@ export default function App() {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
   }
-
-  // ── Render 2D Canvas Transect ──────────────────────────────────────────────
-  const canvasRef = useRef(null)
-  useEffect(() => {
-    if (activeDashboard !== 'transect' || !transectData || !canvasRef.current) return
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    const width = canvas.width
-    const height = canvas.height
-
-    ctx.clearRect(0, 0, width, height)
-
-    const longitudes = transectData.longitudes || []
-    const depths = transectData.depths || []
-    const grid = transectData.grid || []
-    const d20_contour = transectData.d20_contour || []
-
-    if (longitudes.length === 0 || depths.length === 0 || grid.length === 0) return
-
-    const cellW = width / longitudes.length
-    const cellH = height / depths.length
-
-    const getColor = (temp) => {
-      const norm = Math.max(0, Math.min(1, (temp - 4.0) / 26.0))
-      let r = 0, g = 0, b = 0
-      if (norm < 0.25) {
-        const t = norm / 0.25
-        r = Math.floor(10 + 20 * t)
-        g = Math.floor(30 + 100 * t)
-        b = Math.floor(120 + 135 * t)
-      } else if (norm < 0.5) {
-        const t = (norm - 0.25) / 0.25
-        r = Math.floor(30 + 10 * t)
-        g = Math.floor(130 + 100 * t)
-        b = Math.floor(255 - 150 * t)
-      } else if (norm < 0.75) {
-        const t = (norm - 0.5) / 0.25
-        r = Math.floor(40 + 200 * t)
-        g = Math.floor(230 + 10 * t)
-        b = Math.floor(105 - 90 * t)
-      } else {
-        const t = (norm - 0.75) / 0.25
-        r = Math.floor(240 + 15 * t)
-        g = Math.floor(240 - 180 * t)
-        b = Math.floor(15 + 10 * t)
-      }
-      return `rgb(${r}, ${g}, ${b})`
-    }
-
-    for (let j = 0; j < depths.length; j++) {
-      for (let i = 0; i < longitudes.length; i++) {
-        const temp = grid[j][i]
-        ctx.fillStyle = getColor(temp)
-        ctx.fillRect(i * cellW, j * cellH, cellW + 0.5, cellH + 0.5)
-      }
-    }
-
-    // D20 Isotherm dashed contour line
-    ctx.beginPath()
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 2.5
-    ctx.setLineDash([6, 4])
-    d20_contour.forEach((dVal, i) => {
-      const x = i * cellW + cellW / 2
-      const maxD = depths[depths.length - 1]
-      const y = (dVal / maxD) * height
-      if (i === 0) ctx.moveTo(x, y)
-      else ctx.lineTo(x, y)
-    })
-    ctx.stroke()
-    ctx.setLineDash([])
-
-    // Active buoy vertical probe line
-    const buoyNormX = (lon - 45.0) / (105.0 - 45.0)
-    const buoyX = Math.max(0, Math.min(width, buoyNormX * width))
-    ctx.strokeStyle = '#00f0ff'
-    ctx.lineWidth = 2.5
-    ctx.beginPath()
-    ctx.moveTo(buoyX, 0)
-    ctx.lineTo(buoyX, height)
-    ctx.stroke()
-
-    ctx.fillStyle = '#00f0ff'
-    ctx.beginPath()
-    ctx.arc(buoyX, 10, 6, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-  }, [activeDashboard, transectData, lon])
 
   return (
     <div style={{ minHeight: '100vh', padding: '16px 24px 32px 24px', maxWidth: '1650px', margin: '0 auto' }}>
@@ -1396,7 +1336,7 @@ export default function App() {
               </div>
             )}
 
-            {/* ── DASHBOARD 4: 2D BASIN TRANSECT (HIGH PERFORMANCE & INTERACTIVE) */}
+            {/* ── DASHBOARD 4: 2D BASIN TRANSECT (HIGH-FIDELITY GUARANTEED SVG) ── */}
             {activeDashboard === 'transect' && (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
@@ -1405,82 +1345,183 @@ export default function App() {
                       <span>🌊</span> 2D Basin Zonal Transect (45°E → 105°E at {lat}°N)
                     </h3>
                     <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
-                      Thermal cross-section showing Somali upwelling cold wedge, central equatorial thermocline slope, and Bay of Bengal heat reservoir
+                      Continuous vertical cross-section from Somali upwelling cold wedge (shallow D20) across to the Bay of Bengal stratified warm pool
                     </p>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '12px', background: 'rgba(0,240,255,0.12)', color: '#00f0ff', border: '1px solid rgba(0,240,255,0.3)', padding: '4px 10px', borderRadius: '16px', fontFamily: 'JetBrains Mono', fontWeight: 'bold' }}>
-                      Active Sounding: {lon}°E
+                    <span style={{ fontSize: '12px', background: 'rgba(0,240,255,0.12)', color: '#00f0ff', border: '1px solid rgba(0,240,255,0.3)', padding: '4px 12px', borderRadius: '16px', fontFamily: 'JetBrains Mono', fontWeight: 'bold' }}>
+                      Active Sounding Longitude: {lon}°E
                     </span>
-                    {transectLoading && (
-                      <span className="badge-neon" style={{ fontSize: '10px' }}>GENERATING SLICE...</span>
-                    )}
                   </div>
                 </div>
 
                 <div style={{ background: '#020617', padding: '16px', borderRadius: '14px', border: '1px solid rgba(0,240,255,0.25)', position: 'relative' }}>
-                  <canvas
-                    ref={canvasRef}
-                    width={760}
-                    height={320}
-                    style={{ width: '100%', height: '320px', borderRadius: '10px', display: 'block', cursor: 'crosshair' }}
-                    onMouseMove={(e) => {
-                      if (!transectData || !canvasRef.current) return
-                      const rect = e.currentTarget.getBoundingClientRect()
-                      const mouseX = e.clientX - rect.left
-                      const mouseY = e.clientY - rect.top
-                      const normX = Math.max(0, Math.min(1, mouseX / rect.width))
-                      const normY = Math.max(0, Math.min(1, mouseY / rect.height))
-                      const calcLon = 45.0 + normX * (105.0 - 45.0)
-                      const calcDepth = normY * 1000.0
-                      const sst = 27.2 + (calcLon - 45) * 0.065
-                      const thermoclineD = 65 + (calcLon - 45) * 1.35
-                      const tVal = sst - (sst - 4.5) / (1 + Math.exp(-(calcDepth - thermoclineD) / 42))
-                      setHoveredTransect({
-                        lon: Math.round(calcLon * 10) / 10,
-                        depth: Math.round(calcDepth),
-                        temp: Math.round(tVal * 100) / 100,
-                        x: mouseX,
-                        y: mouseY
-                      })
-                    }}
-                    onMouseLeave={() => setHoveredTransect(null)}
-                  />
+                  
+                  {/* High Precision SVG Heatmap Mesh */}
+                  <div style={{ width: '100%', height: '340px', position: 'relative', overflow: 'hidden', borderRadius: '10px' }}>
+                    <svg
+                      viewBox="0 0 760 340"
+                      preserveAspectRatio="none"
+                      style={{ width: '100%', height: '100%', display: 'block' }}
+                      onMouseMove={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        const relX = e.clientX - rect.left
+                        const relY = e.clientY - rect.top
+                        const normX = Math.max(0, Math.min(1, (relX - 55) / (rect.width - 70)))
+                        const normY = Math.max(0, Math.min(1, (relY - 15) / (rect.height - 35)))
+                        const calcLon = Math.round((45.0 + normX * 60.0) * 10) / 10
+                        const calcDepth = Math.round(normY * 1000.0)
+                        
+                        const sst = 27.2 + (calcLon - 45.0) * 0.055 - (lat - 10.0) * 0.06
+                        const d20Val = 60.0 + (calcLon - 45.0) * 1.45 + (lat > 14 && calcLon > 85 ? 15.0 : 0.0)
+                        const thermoclineSlope = 38.0 + (calcLon - 45.0) * 0.25
+                        const temp = sst - (sst - 4.2) / (1.0 + Math.exp(-(calcDepth - d20Val) / thermoclineSlope))
+                        
+                        setHoveredTransect({
+                          lon: calcLon,
+                          depth: calcDepth,
+                          temp: Math.round(temp * 100) / 100,
+                          x: relX,
+                          y: relY
+                        })
+                      }}
+                      onMouseLeave={() => setHoveredTransect(null)}
+                    >
+                      <defs>
+                        <linearGradient id="transectAtmosphere" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.2" />
+                          <stop offset="100%" stopColor="#00f0ff" stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
 
-                  {/* Hover Probe on Transect Canvas */}
-                  {hoveredTransect && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '24px',
-                      right: '24px',
-                      background: 'rgba(7,14,36,0.95)',
-                      border: '1px solid #00f0ff',
-                      borderRadius: '8px',
-                      padding: '8px 14px',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.7)',
-                      pointerEvents: 'none',
-                      fontFamily: 'JetBrains Mono',
-                      fontSize: '12px',
-                    }}>
-                      <div style={{ color: '#00f0ff', fontWeight: 'bold' }}>Longitude: {hoveredTransect.lon}°E</div>
-                      <div style={{ color: '#ffffff' }}>Depth: {hoveredTransect.depth} m</div>
-                      <div style={{ color: '#10b981', fontWeight: 'bold' }}>Temp: {hoveredTransect.temp} °C</div>
-                    </div>
-                  )}
+                      {/* 2D Interpolated Thermal Heatmap Cells */}
+                      {(() => {
+                        const cellW = (760 - 70) / (transectModel.longitudes.length - 1)
+                        const cellH = (340 - 35) / (transectModel.depths.length - 1)
+                        const elements = []
 
-                  {/* Axis labels */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', color: '#94a3b8', fontSize: '12px', fontFamily: 'JetBrains Mono' }}>
+                        for (let j = 0; j < transectModel.depths.length - 1; j++) {
+                          for (let i = 0; i < transectModel.longitudes.length - 1; i++) {
+                            const temp = transectModel.grid[j][i]
+                            const x = 55 + i * cellW
+                            const y = 15 + j * cellH
+                            elements.push(
+                              <rect
+                                key={`${i}-${j}`}
+                                x={x}
+                                y={y}
+                                width={cellW + 0.6}
+                                height={cellH + 0.6}
+                                fill={getOceanTempColor(temp)}
+                              />
+                            )
+                          }
+                        }
+                        return elements
+                      })()}
+
+                      {/* Depth Sounding Axis Lines */}
+                      {[0, 200, 400, 600, 800, 1000].map(d => {
+                        const y = 15 + (d / 1000) * (340 - 35)
+                        return (
+                          <g key={d}>
+                            <line x1={55} y1={y} x2={745} y2={y} stroke="rgba(255,255,255,0.12)" strokeDasharray="3 3" />
+                            <text x={48} y={y + 4} fill="#94a3b8" fontSize="10" textAnchor="end" fontFamily="JetBrains Mono">{d}m</text>
+                          </g>
+                        )
+                      })}
+
+                      {/* Longitude Vertical Grid Lines */}
+                      {[45, 55, 65, 75, 85, 95, 105].map(l => {
+                        const x = 55 + ((l - 45) / 60) * (745 - 55)
+                        return (
+                          <g key={l}>
+                            <line x1={x} y1={15} x2={x} y2={340 - 20} stroke="rgba(255,255,255,0.12)" strokeDasharray="3 3" />
+                          </g>
+                        )
+                      })}
+
+                      {/* D20 Isotherm Thermocline Contour (Glowing dashed line) */}
+                      {(() => {
+                        const pts = transectModel.longitudes.map((l, i) => {
+                          const x = 55 + ((l - 45) / 60) * (745 - 55)
+                          const dVal = transectModel.d20_contour[i]
+                          const y = 15 + (dVal / 1000) * (340 - 35)
+                          return `${x},${y}`
+                        })
+                        return (
+                          <g>
+                            <path
+                              d={`M ${pts.join(' L ')}`}
+                              fill="none"
+                              stroke="#ffffff"
+                              strokeWidth="2.5"
+                              strokeDasharray="6 4"
+                              style={{ filter: 'drop-shadow(0 0 6px rgba(255,255,255,0.8))' }}
+                            />
+                            {/* D20 Label Tag in Bay of Bengal */}
+                            <rect x={660} y={15 + (transectModel.d20_contour[transectModel.d20_contour.length - 3] / 1000) * (340 - 35) - 12} width="46" height="20" rx="4" fill="rgba(0,0,0,0.85)" stroke="#00f0ff" />
+                            <text x={683} y={15 + (transectModel.d20_contour[transectModel.d20_contour.length - 3] / 1000) * (340 - 35) + 2} fill="#00f0ff" fontSize="10" fontWeight="bold" textAnchor="middle">D20</text>
+                          </g>
+                        )
+                      })()}
+
+                      {/* Active Sounding Longitude Line */}
+                      {(() => {
+                        const buoyX = 55 + ((Math.max(45, Math.min(105, lon)) - 45) / 60) * (745 - 55)
+                        return (
+                          <g>
+                            <line x1={buoyX} y1={15} x2={buoyX} y2={340 - 20} stroke="#00f0ff" strokeWidth="2.5" style={{ filter: 'drop-shadow(0 0 8px #00f0ff)' }} />
+                            <circle cx={buoyX} cy={15} r="6" fill="#00f0ff" stroke="#ffffff" strokeWidth="2" />
+                          </g>
+                        )
+                      })()}
+
+                      {/* Interactive Cursor crosshair when hovering */}
+                      {hoveredTransect && (
+                        <g>
+                          <line x1={55} y1={hoveredTransect.y} x2={745} y2={hoveredTransect.y} stroke="rgba(255,255,255,0.5)" strokeDasharray="2 2" />
+                          <line x1={hoveredTransect.x} y1={15} x2={hoveredTransect.x} y2={340 - 20} stroke="rgba(255,255,255,0.5)" strokeDasharray="2 2" />
+                          <circle cx={hoveredTransect.x} cy={hoveredTransect.y} r="5" fill="#00f0ff" stroke="#ffffff" strokeWidth="2" />
+                        </g>
+                      )}
+                    </svg>
+
+                    {/* Floating Info Tooltip */}
+                    {hoveredTransect && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '18px',
+                        right: '18px',
+                        background: 'rgba(7,14,36,0.95)',
+                        border: '1.5px solid #00f0ff',
+                        borderRadius: '8px',
+                        padding: '8px 14px',
+                        boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
+                        pointerEvents: 'none',
+                        fontFamily: 'JetBrains Mono',
+                        fontSize: '12px',
+                      }}>
+                        <div style={{ color: '#00f0ff', fontWeight: 'bold' }}>Longitude: {hoveredTransect.lon}°E</div>
+                        <div style={{ color: '#ffffff' }}>Depth: {hoveredTransect.depth} m</div>
+                        <div style={{ color: '#10b981', fontWeight: 'bold' }}>Temp: {hoveredTransect.temp} °C</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Longitude Axis Labels */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '55px', paddingRight: '15px', marginTop: '10px', color: '#94a3b8', fontSize: '11px', fontFamily: 'JetBrains Mono' }}>
                     <span>45°E (Somali Upwelling)</span>
-                    <span>65°E (Arabian Sea)</span>
-                    <span>80°E (Sri Lanka Ridge)</span>
-                    <span>90°E (Bay of Bengal)</span>
+                    <span>60°E (W. Arabian Sea)</span>
+                    <span>75°E (Central Basin)</span>
+                    <span>88°E (Bay of Bengal)</span>
                     <span>105°E (Andaman Sea)</span>
                   </div>
 
-                  {/* Colormap Legend & D20 Annotation */}
+                  {/* Colormap Legend & Annotations */}
                   <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#cbd5e1' }}>
-                      <span style={{ display: 'inline-block', width: '20px', height: '0px', borderTop: '2px dashed #ffffff' }}></span>
+                      <span style={{ display: 'inline-block', width: '22px', height: '0px', borderTop: '2.5px dashed #ffffff' }}></span>
                       <span>D20 Isotherm Contour (Thermocline Ridge)</span>
                     </div>
 
@@ -1490,6 +1531,7 @@ export default function App() {
                       <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'JetBrains Mono' }}>30°C (Surface)</span>
                     </div>
                   </div>
+
                 </div>
               </div>
             )}
