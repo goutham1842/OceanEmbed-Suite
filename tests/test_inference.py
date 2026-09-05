@@ -3,7 +3,10 @@ OceanEmbed — Tests for Inference Engine and Resilience.
 """
 
 from pathlib import Path
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 
 from src.data.grid import SIH_DEPTHS
 from src.inference.engine import OceanEmbedEngine

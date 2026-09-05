@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
-import xarray as xr
+try:
+    import xarray as xr
+except ImportError:
+    xr = None  # type: ignore
 import yaml
 
 logger = logging.getLogger(__name__)

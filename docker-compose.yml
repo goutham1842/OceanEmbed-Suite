@@ -1,0 +1,24 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: oceanembed-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - FRONTEND_URL=http://localhost:5173
+    volumes:
+      - ./artifacts:/app/artifacts
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: oceanembed-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

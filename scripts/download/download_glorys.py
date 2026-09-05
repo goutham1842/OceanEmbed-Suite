@@ -129,9 +129,30 @@ def main() -> None:
         "--test-slice", action="store_true",
         help="Download a minimal 7-day test slice (Jan 2020)"
     )
+    parser.add_argument(
+        "--generate-mock", action="store_true",
+        help="Generate synthetic mock acquisition slice for pipeline validation without credentials"
+    )
     parser.add_argument("--output-dir", default=str(OUTPUT_DIR))
 
     args = parser.parse_args()
+
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.generate_mock:
+        mock_file = out_dir / "glorys_NIO_mock_sample.json"
+        with open(mock_file, "w", encoding="utf-8") as f:
+            import json
+            json.dump({
+                "dataset_id": DATASET_ID,
+                "domain": DOMAIN,
+                "variables": VARIABLES,
+                "note": "Mock sample staged for pipeline validation (Person 2 - GLORYS Acquisition).",
+                "status": "MOCK_READY"
+            }, f, indent=2)
+        logger.info(f"SUCCESS: Mock GLORYS acquisition sample staged at {mock_file}")
+        return
 
     if args.test_slice:
         start, end = "2020-01-01", "2020-01-07"
@@ -140,7 +161,7 @@ def main() -> None:
         start, end = args.start, args.end
 
     try:
-        path = download_glorys(start, end, Path(args.output_dir))
+        path = download_glorys(start, end, out_dir)
         logger.info(f"SUCCESS: {path}")
     except EnvironmentError as e:
         logger.error(f"CREDENTIAL BLOCKER:\n{e}")

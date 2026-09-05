@@ -7,8 +7,7 @@ Defines the canonical 0.25° North Indian Ocean grid and coordinate helpers.
 from __future__ import annotations
 
 import numpy as np
-import xarray as xr
-from typing import Tuple
+from typing import Tuple, Any
 
 
 # ── Canonical grid parameters ─────────────────────────────────────────────────
@@ -69,8 +68,9 @@ def make_grid(
 def make_empty_grid_da(
     name: str = "temperature",
     units: str = "°C",
-) -> xr.DataArray:
+) -> Any:
     """Return an empty (NaN) DataArray on the canonical grid."""
+    import xarray as xr
     lats, lons = make_grid()
     data = np.full((len(lats), len(lons)), np.nan)
     return xr.DataArray(

@@ -124,9 +124,35 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Download ARGO profiles for North Indian Ocean")
     parser.add_argument("--start", default="2021-01-01", help="Start date YYYY-MM-DD")
     parser.add_argument("--end", default="2022-12-31", help="End date YYYY-MM-DD")
+    parser.add_argument(
+        "--generate-mock", action="store_true",
+        help="Generate synthetic mock ARGO float acquisition data for offline pipeline validation"
+    )
     parser.add_argument("--output-dir", default=str(OUTPUT_DIR))
 
     args = parser.parse_args()
+    out_dir = Path(args.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.generate_mock:
+        from src.evaluation.argo_validation import generate_synthetic_argo_profiles
+        profiles = generate_synthetic_argo_profiles(num_profiles=15)
+        mock_file = out_dir / "argo_incois_mock_sample.json"
+        with open(mock_file, "w", encoding="utf-8") as f:
+            import json
+            json.dump([
+                {
+                    "platform_id": p.platform_id,
+                    "cycle_number": p.cycle_number,
+                    "lat": p.lat,
+                    "lon": p.lon,
+                    "date": p.date,
+                    "depths": p.depths.tolist(),
+                    "temperatures": p.temperatures.tolist(),
+                } for p in profiles
+            ], f, indent=2)
+        logger.info(f"SUCCESS: Mock ARGO acquisition sample staged at {mock_file}")
+        return
 
     logger.info(
         "ARGO download is for INDEPENDENT VALIDATION only.\n"
@@ -134,7 +160,7 @@ def main() -> None:
     )
 
     try:
-        path = download_argo_incois_erddap(args.start, args.end, Path(args.output_dir))
+        path = download_argo_incois_erddap(args.start, args.end, out_dir)
         logger.info(f"SUCCESS: {path}")
     except Exception as e:
         logger.error(f"ARGO download failed: {e}")

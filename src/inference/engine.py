@@ -73,6 +73,43 @@ def _demo_temperature_profile(
     return temperatures, uncertainties
 
 
+def calculate_thermocline_features(depths: List[float], temps: List[float]) -> Dict[str, float]:
+    """Calculate key oceanographic thermocline metrics from profile."""
+    d20 = 100.0
+    for i in range(len(temps) - 1):
+        if (temps[i] >= 20.0 and temps[i + 1] <= 20.0) or (temps[i] <= 20.0 and temps[i + 1] >= 20.0):
+            denom = (temps[i] - temps[i + 1])
+            frac = (temps[i] - 20.0) / denom if denom != 0 else 0.0
+            d20 = depths[i] + frac * (depths[i + 1] - depths[i])
+            break
+
+    # MLD (|T_0 - T_z| >= 0.5°C)
+    mld = 35.0
+    t0 = temps[0] if temps else 28.0
+    for i in range(1, len(temps)):
+        if abs(t0 - temps[i]) >= 0.5:
+            mld = depths[i]
+            break
+
+    # Max gradient and thermocline depth
+    max_grad = 0.0
+    thermo_depth = 80.0
+    for i in range(len(temps) - 1):
+        dz = abs(depths[i + 1] - depths[i])
+        if dz > 0:
+            grad = abs(temps[i] - temps[i + 1]) / dz
+            if grad > max_grad:
+                max_grad = grad
+                thermo_depth = (depths[i] + depths[i + 1]) / 2.0
+
+    return {
+        "d20_depth_m": round(float(d20), 2),
+        "mld_m": round(float(mld), 2),
+        "max_gradient_c_per_m": round(float(max_grad), 4),
+        "thermocline_depth_m": round(float(thermo_depth), 2),
+    }
+
+
 class OceanEmbedEngine:
     """Inference engine for OceanEmbed predictions.
 
@@ -161,6 +198,7 @@ class OceanEmbedEngine:
             "depths": depths,
             "temperatures": temps,
             "uncertainties": uncs,
+            "thermocline": calculate_thermocline_features(depths, temps),
             "warning": "DEMO / SYNTHETIC data. NOT a scientific result.",
         }
 

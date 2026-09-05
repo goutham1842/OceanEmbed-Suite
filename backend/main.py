@@ -81,7 +81,7 @@ app = FastAPI(
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -276,6 +276,52 @@ def get_argo_comparison(
         "lat": lat,
         "lon": lon,
         "date": date,
+    }
+
+
+# --- Ablations endpoint --------------------------------------------------------
+
+@app.get("/api/ablations", tags=["Evaluation"])
+def get_ablations() -> Dict[str, Any]:
+    """Return ablation study benchmarks for OceanEmbed vs 5 baselines."""
+    ablation_path = ROOT_DIR / "artifacts" / "metrics" / "ablation_study_report.json"
+    if ablation_path.exists():
+        import json
+        with open(ablation_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    
+    from src.evaluation.ablations import generate_ablation_benchmarks
+    return generate_ablation_benchmarks()
+
+
+# --- Transect endpoint (2D Depth-Longitude Basin Slice) ------------------------
+
+@app.get("/api/transect", tags=["Inference"])
+def get_transect(
+    lat: float = Query(15.0, ge=5.0, le=30.0, description="Latitude for cross-section (5-30°N)"),
+    date: str = Query("2023-07-15", description="Date in YYYY-MM-DD format"),
+) -> Dict[str, Any]:
+    """Return 2D cross-section across Indian Ocean basin (45°E to 105°E)."""
+    engine = get_engine()
+    longitudes = [float(lon) for lon in range(45, 106, 2)]
+    transect_depths = [0.0, 10.0, 25.0, 50.0, 75.0, 100.0, 125.0, 150.0, 200.0, 300.0, 500.0, 750.0, 1000.0]
+    
+    matrix = []
+    d20_line = []
+    
+    for lon in longitudes:
+        prof = engine.predict_profile(lat=lat, lon=lon, date=date, depths=transect_depths)
+        matrix.append(prof["temperatures"])
+        d20_line.append(prof["thermocline"]["d20_depth_m"])
+        
+    return {
+        "lat": lat,
+        "date": date,
+        "longitudes": longitudes,
+        "depths": transect_depths,
+        "temperatures_2d": matrix, # [len(longitudes)][len(depths)]
+        "d20_depths": d20_line,
+        "demo": engine.demo_mode,
     }
 
 

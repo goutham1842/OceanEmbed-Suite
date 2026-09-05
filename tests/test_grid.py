@@ -3,7 +3,10 @@ OceanEmbed — Tests for Grid and Coordinate Utilities.
 """
 
 import numpy as np
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
 
 from src.data.grid import (
     DOMAIN,

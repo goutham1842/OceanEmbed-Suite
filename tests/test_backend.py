@@ -2,15 +2,46 @@
 OceanEmbed — Tests for FastAPI Endpoints.
 """
 
-import pytest
-from fastapi.testclient import TestClient
+import asyncio
+import sys
+from pathlib import Path
+try:
+    import pytest
+except ImportError:
+    pytest = None
+
+import httpx
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from backend.main import app
 
 
-@pytest.fixture
-def client():
-    return TestClient(app)
+def run_sync(coro):
+    return asyncio.run(coro)
+
+
+class SimpleAsyncTestClient:
+    def __init__(self, app):
+        self.app = app
+
+    def get(self, path):
+        async def _do():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url="http://test") as c:
+                return await c.get(path)
+        return run_sync(_do())
+
+    def post(self, path, json=None):
+        async def _do():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url="http://test") as c:
+                return await c.post(path, json=json)
+        return run_sync(_do())
+
+
+def get_test_client():
+    return SimpleAsyncTestClient(app)
 
 
 def test_health_endpoint(client):
@@ -54,3 +85,18 @@ def test_profile_post_endpoint(client):
     data = res.json()
     assert len(data["temperatures"]) == 15
     assert len(data["uncertainties"]) == 15
+
+
+if pytest is not None:
+    @pytest.fixture
+    def client():
+        return get_test_client()
+
+
+if __name__ == "__main__":
+    c = get_test_client()
+    test_health_endpoint(c)
+    test_depths_endpoint(c)
+    test_prediction_continuous_query(c)
+    test_profile_post_endpoint(c)
+    print("ALL BACKEND ENDPOINT TESTS PASSED!")
