@@ -1,0 +1,25 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "include": [
+    ".",
+    "src",
+    "backend",
+    "scripts",
+    "tests"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "frontend",
+    "data",
+    ".venv"
+  ],
+  "extraPaths": [
+    ".",
+    "src",
+    "backend",
+    "C:/Users/K Satya Sai Sailesh/AppData/Roaming/Python/Python313/site-packages"
+  ],
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Windows"
+}

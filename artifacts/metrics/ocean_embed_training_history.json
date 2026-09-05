@@ -1,0 +1,32 @@
+{
+  "model": "OceanEmbed",
+  "is_demo_mode": true,
+  "scientific_status": "DEMO / SOFTWARE_TEST",
+  "epochs": 2,
+  "best_val_rmse": 15.511189460754395,
+  "total_time_seconds": 48.471503019332886,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 123.7851,
+      "train_rmse": 15.5285,
+      "val_loss": 119.7354,
+      "val_rmse": 15.5258,
+      "val_mae": 13.4197,
+      "val_bias": -13.4197,
+      "mean_uncertainty": 0.9915,
+      "elapsed_s": 26.94
+    },
+    {
+      "epoch": 2,
+      "train_loss": 96.6756,
+      "train_rmse": 15.499,
+      "val_loss": 102.9761,
+      "val_rmse": 15.5112,
+      "val_mae": 13.4049,
+      "val_bias": -13.4049,
+      "mean_uncertainty": 1.0545,
+      "elapsed_s": 21.2
+    }
+  ]
+}

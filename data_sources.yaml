@@ -1,0 +1,283 @@
+# OceanEmbed — Data Sources Registry
+# data_sources.yaml
+# Every entry fully describes a dataset used in OceanEmbed.
+
+datasets:
+
+  - id: glorys12v1
+    name: "GLORYS12V1 Global Ocean Physics Reanalysis"
+    provider: "Copernicus Marine Service (CMEMS)"
+    official_url: "https://marine.copernicus.eu/access-data/ocean-products/GLOBAL_MULTIYEAR_PHY_001_030"
+    dataset_id: "cmems_mod_glo_phy_my_0.083deg_P1D-m"
+    product_id: "GLOBAL_MULTIYEAR_PHY_001_030"
+    variables:
+      - name: thetao
+        description: Sea water potential temperature (subsurface)
+        units: "°C"
+      - name: so
+        description: Sea water salinity
+        units: "PSU"
+      - name: uo
+        description: Eastward sea water velocity
+        units: "m/s"
+      - name: vo
+        description: Northward sea water velocity
+        units: "m/s"
+      - name: zos
+        description: Sea surface height above geoid
+        units: "m"
+    spatial_resolution: "0.0833° (~8.3 km)"
+    temporal_resolution: "Daily"
+    vertical_levels: "50 levels from surface to 5500 m"
+    coverage: "Global, 1993–present"
+    role: "primary_training_target"
+    access_method: "copernicusmarine Python API"
+    download_example: |
+      import copernicusmarine
+      copernicusmarine.subset(
+          dataset_id="cmems_mod_glo_phy_my_0.083deg_P1D-m",
+          variables=["thetao"],
+          minimum_latitude=5.0, maximum_latitude=30.0,
+          minimum_longitude=45.0, maximum_longitude=105.0,
+          start_datetime="2020-01-01", end_datetime="2020-01-31",
+          output_filename="glorys_sample.nc",
+          output_directory="data/raw/glorys"
+      )
+    preprocessing: |
+      1. Subset to North Indian Ocean (5–30°N, 45–105°E)
+      2. Select depths 0–1000 m (15 SIH standard levels)
+      3. Regrid from 0.0833° to 0.25° using bilinear interpolation
+      4. QC: flag thetao outside [-5, 40] °C
+      5. Convert to daily time steps
+    licensing: "Copernicus Marine Service — free after registration"
+    requires_credentials: true
+    credential_env_vars: ["COPERNICUSMARINE_SERVICE_USERNAME", "COPERNICUSMARINE_SERVICE_PASSWORD"]
+    type: target
+
+  - id: ostia_sst
+    name: "OSTIA Global SST (UK Met Office)"
+    provider: "Copernicus Marine Service (CMEMS)"
+    official_url: "https://marine.copernicus.eu/access-data/ocean-products/SST_GLO_SST_L4_NRT_OBSERVATIONS_010_001"
+    dataset_id: "METOFFICE-GLO-SST-L4-NRT-OBS-SST-V2"
+    product_id: "SST_GLO_SST_L4_NRT_OBSERVATIONS_010_001"
+    variables:
+      - name: analysed_sst
+        description: Daily analysed sea surface temperature
+        units: "K (convert to °C)"
+      - name: analysis_error
+        description: Estimated error of SST analysis
+        units: "K"
+    spatial_resolution: "0.05° (~5 km)"
+    temporal_resolution: "Daily"
+    vertical_levels: "Surface only"
+    coverage: "Global, 2007–present"
+    role: "primary_sst_input"
+    access_method: "copernicusmarine Python API"
+    preprocessing: |
+      1. Subset to North Indian Ocean
+      2. Convert K → °C (subtract 273.15)
+      3. Regrid to 0.25°
+      4. Generate SST mask (1=valid, 0=missing)
+    licensing: "Copernicus Marine Service — free after registration"
+    requires_credentials: true
+    credential_env_vars: ["COPERNICUSMARINE_SERVICE_USERNAME", "COPERNICUSMARINE_SERVICE_PASSWORD"]
+    type: input
+
+  - id: esa_sst_cci
+    name: "ESA SST CCI/C3S Level 4 Analysis"
+    provider: "ESA / C3S via Copernicus Marine"
+    official_url: "https://climate.esa.int/en/projects/sea-surface-temperature/"
+    dataset_id: "C3S2_422_Lot2_sea-surface-temperature_HRES_L4"
+    variables:
+      - name: analysed_sst
+        units: "K"
+    spatial_resolution: "0.05°"
+    temporal_resolution: "Daily"
+    coverage: "Global, 1981–present"
+    role: "alternative_sst_experiment"
+    access_method: "Copernicus Climate Data Store (CDS) API"
+    preprocessing: "Same as OSTIA; used for robustness experiments only."
+    licensing: "Copernicus Climate Change Service — free after registration"
+    requires_credentials: true
+    credential_env_vars: ["CDSAPI_KEY", "CDSAPI_URL"]
+    type: input
+
+  - id: cmems_sss
+    name: "Copernicus Multi-Observation SSS L4"
+    provider: "Copernicus Marine Service"
+    official_url: "https://marine.copernicus.eu/access-data/ocean-products/MULTIOBS_GLO_PHY_S_SURFACE_MYNRT_015_013"
+    dataset_id: "dataset-sss-ssd-rep-weekly_202112"
+    product_id: "MULTIOBS_GLO_PHY_S_SURFACE_MYNRT_015_013"
+    variables:
+      - name: sos
+        description: Sea surface salinity
+        units: "PSU"
+    spatial_resolution: "0.25°"
+    temporal_resolution: "Weekly / monthly (interpolated to daily)"
+    coverage: "Global, 2010–present"
+    role: "primary_sss_input"
+    access_method: "copernicusmarine Python API"
+    preprocessing: |
+      1. Subset to North Indian Ocean
+      2. Interpolate to daily values (linear temporal interpolation)
+      3. QC: flag outside [20, 42] PSU
+      4. Generate SSS mask
+    licensing: "Copernicus Marine Service — free after registration"
+    requires_credentials: true
+    credential_env_vars: ["COPERNICUSMARINE_SERVICE_USERNAME", "COPERNICUSMARINE_SERVICE_PASSWORD"]
+    type: input
+
+  - id: smos_catds_sss
+    name: "SMOS CATDS Sea Surface Salinity"
+    provider: "CATDS (CNES / IFREMER)"
+    official_url: "https://www.catds.fr/Products/Available-products-from-CEC-OS"
+    variables:
+      - name: SSS
+        description: Sea surface salinity
+        units: "PSU"
+    spatial_resolution: "0.25°"
+    temporal_resolution: "Daily / weekly products"
+    coverage: "Global, 2010–present"
+    role: "alternative_sss_experiment"
+    access_method: "CATDS FTP / HTTP download"
+    preprocessing: "Subset and regrid; use for robustness experiments only."
+    licensing: "Free public access"
+    requires_credentials: false
+    type: input
+
+  - id: duacs_sla
+    name: "DUACS L4 Sea Level Anomaly (SEALEVEL_GLO_PHY_L4_MY_008_047)"
+    provider: "Copernicus Marine Service"
+    official_url: "https://marine.copernicus.eu/access-data/ocean-products/SEALEVEL_GLO_PHY_L4_MY_008_047"
+    dataset_id: "cmems_obs-sl_glo_phy-ssh_my_allsat-l4-duacs-0.125deg_P1D"
+    variables:
+      - name: sla
+        description: Sea Level Anomaly
+        units: "m"
+      - name: adt
+        description: Absolute Dynamic Topography
+        units: "m"
+      - name: ugos
+        description: Geostrophic surface current eastward
+        units: "m/s"
+      - name: vgos
+        description: Geostrophic surface current northward
+        units: "m/s"
+    spatial_resolution: "0.125°"
+    temporal_resolution: "Daily"
+    coverage: "Global, 1993–present"
+    role: "primary_ssh_and_current_input"
+    access_method: "copernicusmarine Python API"
+    preprocessing: |
+      1. Use SLA as SSH proxy input
+      2. Use ugos/vgos as surface geostrophic current inputs
+      3. Regrid from 0.125° to 0.25°
+    licensing: "Copernicus Marine Service — free after registration"
+    requires_credentials: true
+    credential_env_vars: ["COPERNICUSMARINE_SERVICE_USERNAME", "COPERNICUSMARINE_SERVICE_PASSWORD"]
+    type: input
+
+  - id: cmems_winds
+    name: "Copernicus Surface Winds (ERA5 / NCEP via CMEMS reanalysis)"
+    provider: "ECMWF / Copernicus Climate Data Store"
+    official_url: "https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels"
+    dataset_id: "reanalysis-era5-single-levels"
+    variables:
+      - name: u10
+        description: 10m u-component of wind
+        units: "m/s"
+      - name: v10
+        description: 10m v-component of wind
+        units: "m/s"
+    spatial_resolution: "0.25°"
+    temporal_resolution: "Hourly (aggregate to daily mean)"
+    coverage: "Global, 1940–present"
+    role: "primary_wind_input"
+    access_method: "CDS API (cdsapi Python package)"
+    preprocessing: |
+      1. Download hourly u10, v10 for North Indian Ocean
+      2. Compute daily mean
+      3. QC: flag wind speed > 50 m/s
+      4. Generate wind masks
+    licensing: "Copernicus Climate Change Service — free after registration"
+    requires_credentials: true
+    credential_env_vars: ["CDSAPI_KEY", "CDSAPI_URL"]
+    type: input
+
+  - id: ascat_winds
+    name: "ASCAT/EUMETSAT Scatterometer Wind Product"
+    provider: "EUMETSAT / KNMI"
+    official_url: "https://www.eumetsat.int/ascat"
+    variables:
+      - name: wind_speed
+        units: "m/s"
+      - name: wind_direction
+        units: "degrees"
+    spatial_resolution: "0.25°"
+    temporal_resolution: "Daily composites"
+    coverage: "Global, 2006–present"
+    role: "alternative_wind_experiment"
+    access_method: "EUMETSAT Data Store / KNMI OSI-SAF"
+    preprocessing: "Decompose to U/V; subset; use for robustness experiments."
+    licensing: "Free public access"
+    requires_credentials: false
+    type: input
+
+  - id: incois_argo
+    name: "INCOIS Indian Ocean ARGO Profiles"
+    provider: "INCOIS / Argo India"
+    official_url: "https://erddap.incois.gov.in/erddap/tabledap/ArgoProfilesIS.html"
+    dataset_id: "ArgoProfilesIS"
+    variables:
+      - name: TEMP
+        description: In-situ temperature profile
+        units: "°C"
+      - name: PSAL
+        description: In-situ salinity profile
+        units: "PSU"
+      - name: PRES
+        description: Pressure (depth proxy)
+        units: "dbar"
+      - name: LATITUDE
+      - name: LONGITUDE
+      - name: JULD
+        description: Julian date of profile
+    spatial_resolution: "Point observations (irregular)"
+    temporal_resolution: "~10-day cycle per float"
+    coverage: "Indian Ocean, 2002–present"
+    role: "independent_validation"
+    access_method: "INCOIS ERDDAP REST API or Argo GDAC FTP"
+    erddap_example: |
+      # Example ERDDAP query:
+      https://erddap.incois.gov.in/erddap/tabledap/ArgoProfilesIS.csv?
+        JULD,LATITUDE,LONGITUDE,PRES,TEMP,PSAL,PROFILE_STATUS_FLAG
+        &LATITUDE>=5&LATITUDE<=30&LONGITUDE>=45&LONGITUDE<=105
+        &JULD>=2019-01-01T00:00:00Z&JULD<=2022-12-31T23:59:59Z
+        &PROFILE_STATUS_FLAG=A
+    preprocessing: |
+      IMPORTANT: ARGO profiles used for independent validation must NOT
+      overlap with any profiles used directly or indirectly in training.
+      
+      QC procedure:
+      1. Retain only PROFILE_STATUS_FLAG = 'A' (adjusted) or 'D' (delayed mode)
+      2. Filter TEMP_QC and PRES_QC = 1 (good data)
+      3. Convert pressure to depth using gsw or simplified formula
+      4. Interpolate to query depths if needed
+      5. Match to nearest model grid point within 0.25°/1 day tolerance
+    licensing: "Public access; INCOIS data usage policy applies"
+    requires_credentials: false
+    type: validation
+
+  - id: argo_gdac
+    name: "Global Argo GDAC (IFREMER FTP)"
+    provider: "Argo GDAC / IFREMER"
+    official_url: "https://data-argo.ifremer.fr/"
+    variables:
+      - name: TEMP, PSAL, PRES, LATITUDE, LONGITUDE, JULD
+    coverage: "Global, 2000–present"
+    role: "alternative_argo_access"
+    access_method: "argopy Python library or direct FTP"
+    preprocessing: "Same as INCOIS ARGO above."
+    licensing: "Public access"
+    requires_credentials: false
+    type: validation

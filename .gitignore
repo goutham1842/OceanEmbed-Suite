@@ -1,0 +1,122 @@
+# OceanEmbed .gitignore
+
+# Environment & Secrets / Credentials / API keys
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+secrets.yaml
+secrets.json
+credentials/
+credentials.*
+*.pem
+*.key
+*.pfx
+*token*
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Node & Frontend dependencies & build outputs
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python caches & build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Data directories (raw, interim, processed data)
+data/raw/*
+!data/raw/.gitkeep
+data/interim/*
+!data/interim/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
+# Large scientific data files (NetCDF, Zarr, HDF5, GRIB, NPZ, etc.)
+*.nc
+*.nc4
+*.zarr/
+*.zarr
+*.h5
+*.hdf5
+*.grib
+*.grib2
+*.npz
+*.npy
+
+# Model checkpoints (PyTorch, ONNX, etc.)
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+artifacts/checkpoints/*
+!artifacts/checkpoints/.gitkeep
+
+# Generated artifacts too large for GitHub
+artifacts/figures/*
+!artifacts/figures/.gitkeep
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary directories
+tmp/
+temp/
+scratch/
