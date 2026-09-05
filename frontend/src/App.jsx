@@ -9,7 +9,7 @@ const PRESET_SCENARIOS = [
     icon: '🌪️',
     name: 'Cyclone Amphan Heat Pool',
     tag: 'Bay of Bengal • Pre-Cyclone',
-    desc: 'Upper-ocean heat reservoir (TCHP > 80 kJ/cm²) creating conditions for rapid cyclone intensification.',
+    desc: 'Extreme upper-ocean heat reservoir (TCHP > 80 kJ/cm²) creating conditions for rapid cyclone intensification.',
     lat: 18.0,
     lon: 88.0,
     date: '2020-05-15',
@@ -42,7 +42,7 @@ const PRESET_SCENARIOS = [
     icon: '🐟',
     name: 'Lakshadweep Reef Zone',
     tag: 'Arabian Sea • Coastal',
-    desc: 'Thermal barrier region identified for marine productivity, ecosystem stability, and fishery zones.',
+    desc: 'High-productivity thermal barrier region identified for marine biodiversity and fishing zones.',
     lat: 10.5,
     lon: 72.5,
     date: '2020-03-15',
@@ -53,7 +53,7 @@ const PRESET_SCENARIOS = [
     icon: '🌐',
     name: 'Equatorial Channel',
     tag: 'Open Ocean • Deep Basin',
-    desc: 'Stratified tropical oceanic regime with deep thermocline and baseline hydrodynamic stability.',
+    desc: 'Stratified tropical oceanic regime with deep thermocline and baseline stability.',
     lat: 5.5,
     lon: 79.0,
     date: '2020-01-15',
@@ -68,17 +68,7 @@ const SEASONS = [
   { label: 'Post-Monsoon Cyclone (Oct)', date: '2020-10-15' },
 ]
 
-const MODULES = [
-  { id: 'overview', icon: '📊', label: '1. 3D Thermal Inversion Profile', shortDesc: 'Continuous depth inversion (0–1000m) with ±1σ uncertainty and ARGO matchup.' },
-  { id: 'map_sensors', icon: '🗺️', label: '2. Ocean Basin Map & Sensor Lab', shortDesc: 'Geographic coordinate selector and multi-satellite sensor outage fault tolerance.' },
-  { id: 'cyclone', icon: '🎯', label: '3. Cyclone Heat (TCHP) & Marine Heatwaves', shortDesc: 'Upper-ocean heat content integration and rapid intensification threshold monitoring.' },
-  { id: 'transect', icon: '🌊', label: '4. 2D Basin Zonal Transect', shortDesc: 'Depth-longitude cross-section (45°E–105°E) with dynamic D20 thermocline contour.' },
-  { id: 'argo', icon: '🎯', label: '5. ARGO In-Situ CTD Matchup', shortDesc: 'Real-world physical CTD float validation with RMSE, bias, and correlation metrics.' },
-  { id: 'ablations', icon: '🔬', label: '6. Continuous INR & SOTA Ablations', shortDesc: 'Continuous depth scanner and quantitative benchmarks against standard baselines.' },
-  { id: 'pitch_deck', icon: '📋', label: '7. SIH Pitch & Jury Deck', shortDesc: 'Executive architecture walkthrough, physics validation, and operational impact summary.' },
-]
-
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_URL || ''
 
 export default function App() {
   // ── Coordinates & Time States ──────────────────────────────────────────────
@@ -99,10 +89,10 @@ export default function App() {
   const [isPlayingSeason, setIsPlayingSeason] = useState(false)
   const [seasonIdx, setSeasonIdx] = useState(1)
   const [showUserGuide, setShowUserGuide] = useState(false)
-  const [activeSlide, setActiveSlide] = useState(0)
 
   // Active Dashboard Tab
-  const [activeModule, setActiveModule] = useState('overview') 
+  const [activeDashboard, setActiveDashboard] = useState('overview') 
+  // 'overview' | 'map_sensors' | 'cyclone' | 'transect' | 'argo' | 'ablations'
 
   // Prediction Data
   const [profileData, setProfileData] = useState(null)
@@ -115,6 +105,7 @@ export default function App() {
   // Chart Toggles
   const [showArgo, setShowArgo] = useState(true)
   const [showUncertainty, setShowUncertainty] = useState(true)
+  const [systemHealth, setSystemHealth] = useState(null)
   const [hoveredData, setHoveredData] = useState(null)
 
   // ── Missing masks dict ─────────────────────────────────────────────────────
@@ -146,189 +137,103 @@ export default function App() {
       zoom: 4,
       minZoom: 3,
       maxZoom: 8,
-      zoomControl: true,
+      zoomControl: false,
     })
 
-    // Standard OpenStreetMap / ESRI Ocean Basemap
+    L.control.zoom({ position: 'topright' }).addTo(map)
+
+    // ESRI Ocean Basemap
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Tiles &copy; Esri, GEBCO, NOAA',
       maxZoom: 13,
     }).addTo(map)
 
-    // Domain Boundary Box
+    // Bounding box for North Indian Ocean (5–30°N, 45–105°E)
     L.rectangle([[5.0, 45.0], [30.0, 105.0]], {
-      color: '#0284c7',
-      weight: 1.5,
-      dashArray: '4, 4',
-      fill: true,
-      fillColor: '#0284c7',
-      fillOpacity: 0.04
+      color: '#00f0ff',
+      weight: 2,
+      fillColor: '#00f0ff',
+      fillOpacity: 0.08,
+      dashArray: '4 4',
     }).addTo(map)
 
-    // Preset markers
-    PRESET_SCENARIOS.forEach(sc => {
-      const isCurrent = sc.lat === lat && sc.lon === lon
-      const circle = L.circleMarker([sc.lat, sc.lon], {
-        radius: isCurrent ? 8 : 6,
-        color: isCurrent ? '#0284c7' : '#059669',
-        fillColor: isCurrent ? '#0284c7' : '#ffffff',
-        fillOpacity: 0.9,
-        weight: 2
-      }).addTo(map)
-      circle.bindTooltip(`<strong>${sc.name}</strong><br/>${sc.lat}°N, ${sc.lon}°E`, { direction: 'top' })
-      circle.on('click', () => {
-        setLat(sc.lat)
-        setLon(sc.lon)
-        setDate(sc.date)
-        setActiveScenarioId(sc.id)
+    // Custom glowing buoy marker
+    const buoyIcon = L.divIcon({
+      className: 'ocean-buoy-icon',
+      html: `
+        <div style="position:relative; width:18px; height:18px;">
+          <div class="buoy-pulse-ring"></div>
+          <div style="background:#00f0ff; width:16px; height:16px; border-radius:50%; border:2px solid #ffffff; box-shadow:0 0 12px #00f0ff, 0 0 24px #00f0ff;"></div>
+        </div>
+      `,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    })
+
+    const marker = L.marker([lat, lon], { icon: buoyIcon, draggable: true }).addTo(map)
+    marker.on('dragend', (e) => {
+      const pos = e.target.getLatLng()
+      const newLat = Math.max(5.0, Math.min(30.0, Math.round(pos.lat * 4) / 4))
+      const newLon = Math.max(45.0, Math.min(105.0, Math.round(pos.lng * 4) / 4))
+      setLat(newLat)
+      setLon(newLon)
+      setActiveScenarioId('')
+    })
+
+    map.on('click', (e) => {
+      const newLat = Math.max(5.0, Math.min(30.0, Math.round(e.latlng.lat * 4) / 4))
+      const newLon = Math.max(45.0, Math.min(105.0, Math.round(e.latlng.lng * 4) / 4))
+      setLat(newLat)
+      setLon(newLon)
+      setActiveScenarioId('')
+    })
+
+    // Clickable dots for scenarios
+    PRESET_SCENARIOS.forEach(p => {
+      const dotIcon = L.divIcon({
+        className: 'preset-dot',
+        html: '<div style="background:#10b981; width:10px; height:10px; border-radius:50%; border:1.5px solid #fff; opacity:0.9; box-shadow:0 0 8px #10b981;"></div>',
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+      })
+      const m = L.marker([p.lat, p.lon], { icon: dotIcon }).addTo(map)
+      m.on('click', () => {
+        setLat(p.lat)
+        setLon(p.lon)
+        setDate(p.date)
+        setActiveScenarioId(p.id)
       })
     })
 
-    // Active marker
-    const marker = L.circleMarker([lat, lon], {
-      radius: 9,
-      color: '#dc2626',
-      fillColor: '#dc2626',
-      fillOpacity: 0.8,
-      weight: 2
-    }).addTo(map)
+    mapRef.current = map
     markerRef.current = marker
 
-    map.on('click', (e) => {
-      const newLat = Math.round(e.latlng.lat * 10) / 10
-      const newLon = Math.round(e.latlng.lng * 10) / 10
-      if (newLat >= 5 && newLat <= 30 && newLon >= 45 && newLon <= 105) {
-        setLat(newLat)
-        setLon(newLon)
-        setActiveScenarioId(null)
-      }
-    })
-
-    mapRef.current = map
+    setTimeout(() => {
+      map.invalidateSize()
+    }, 250)
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove()
-        mapRef.current = null
-      }
+      map.remove()
+      mapRef.current = null
+      markerRef.current = null
     }
-  }, [activeModule])
+  }, [activeDashboard])
 
+  // Sync marker and pan
   useEffect(() => {
     if (markerRef.current) {
       markerRef.current.setLatLng([lat, lon])
     }
+    if (mapRef.current) {
+      mapRef.current.panTo([lat, lon], { animate: true, duration: 0.4 })
+    }
   }, [lat, lon])
 
-  // ── Fetch Profile Predictions ──────────────────────────────────────────────
-  const fetchProfile = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await axios.post(`${API_BASE}/api/profile`, {
-        lat,
-        lon,
-        date,
-        missing_masks: masks,
-      })
-      setProfileData(res.data)
-
-      if (activeDropoutCount > 0) {
-        const nominalRes = await axios.post(`${API_BASE}/api/profile`, {
-          lat,
-          lon,
-          date,
-          missing_masks: { sst: false, sss: false, ssh: false, wind_u: false, wind_v: false },
-        })
-        setNominalProfileData(nominalRes.data)
-      } else {
-        setNominalProfileData(res.data)
-      }
-    } catch (err) {
-      console.warn('Backend unavailable, generating local fallback physics...', err)
-      // Fallback calculation for demonstration
-      const depths = [0, 10, 20, 30, 50, 75, 100, 125, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000]
-      const sst = 29.5 - (lat - 10) * 0.18 + (lon - 70) * 0.05
-      const temps = depths.map(d => {
-        if (d < 45) return sst - d * 0.012
-        const thermocline = sst - (sst - 5.0) / (1 + Math.exp(-(d - 130) / 45))
-        return Math.max(4.2, thermocline)
-      })
-      const uncert = depths.map(d => 0.22 + (d / 1000) * 0.18 + activeDropoutCount * 0.14)
-      setProfileData({
-        depths,
-        temperatures: temps,
-        uncertainties: uncert,
-        region: lon < 75 ? 'Arabian Sea' : 'Bay of Bengal',
-        surface_inputs: { sst, sss: 34.2, ssh: 0.12, wind_speed: 6.5 }
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ── Fetch Continuous Depth Probe ──────────────────────────────────────────
-  const fetchContinuousProbe = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/api/prediction`, {
-        params: { lat, lon, date, depth }
-      })
-      setContinuousPoint(res.data)
-    } catch (err) {
-      const sst = 29.2
-      const t = sst - (sst - 5.0) / (1 + Math.exp(-(depth - 130) / 45))
-      setContinuousPoint({
-        depth,
-        temperature: Math.max(4.2, t),
-        uncertainty: 0.28 + (depth / 1000) * 0.15,
-        gradient: -0.042
-      })
-    }
-  }
-
-  // ── Fetch 2D Transect Data ────────────────────────────────────────────────
-  const fetchTransect = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/api/transect`, {
-        params: { lat, date, lon_start: 45.0, lon_end: 105.0, num_points: 30 }
-      })
-      setTransectData(res.data)
-    } catch (err) {
-      const lons = []
-      for (let l = 45; l <= 105; l += 2) lons.push(l)
-      const depths = [0, 50, 100, 150, 200, 300, 400, 600, 800, 1000]
-      const grid = depths.map(d => {
-        return lons.map(l => {
-          const sst = 27.5 + (l - 45) * 0.06
-          const t = sst - (sst - 4.5) / (1 + Math.exp(-(d - (100 + (l - 45) * 1.2)) / 50))
-          return Math.max(4.0, t)
-        })
-      })
-      const d20 = lons.map(l => 70 + (l - 45) * 1.4)
-      setTransectData({ longitudes: lons, depths, grid, d20_contour: d20 })
-    }
-  }
-
+  // ── Seasonal Monsoon Auto-Player ───────────────────────────────────────────
   useEffect(() => {
-    fetchProfile()
-    fetchContinuousProbe()
-  }, [lat, lon, date, missingSST, missingSSS, missingSSH, missingWind])
-
-  useEffect(() => {
-    fetchContinuousProbe()
-  }, [depth])
-
-  useEffect(() => {
-    if (activeModule === 'transect') {
-      fetchTransect()
-    }
-  }, [activeModule, lat, date])
-
-  // ── Season Auto-Player ────────────────────────────────────────────────────
-  useEffect(() => {
-    let interval = null
+    let timer = null
     if (isPlayingSeason) {
-      interval = setInterval(() => {
+      timer = setInterval(() => {
         setSeasonIdx(prev => {
           const next = (prev + 1) % SEASONS.length
           setDate(SEASONS[next].date)
@@ -336,18 +241,80 @@ export default function App() {
         })
       }, 2400)
     }
-    return () => clearInterval(interval)
+    return () => { if (timer) clearInterval(timer) }
   }, [isPlayingSeason])
 
-  // ── Thermocline Physical Diagnostics ──────────────────────────────────────
+  // ── Fetch Health on mount ──────────────────────────────────────────────────
+  useEffect(() => {
+    axios.get(`${API_BASE}/api/health`)
+      .then(res => setSystemHealth(res.data))
+      .catch(() => setSystemHealth({ status: 'online', demo_mode: true, data_type: 'DEMO / SYNTHETIC' }))
+  }, [])
+
+  // ── Fetch Profile, Nominal Baseline & Continuous Point ─────────────────────
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+
+    const profileReq = axios.post(`${API_BASE}/api/profile`, {
+      lat: parseFloat(lat),
+      lon: parseFloat(lon),
+      date,
+      masks,
+    })
+
+    const nominalReq = axios.post(`${API_BASE}/api/profile`, {
+      lat: parseFloat(lat),
+      lon: parseFloat(lon),
+      date,
+      masks: { sst: false, sss: false, ssh: false, wind_u: false, wind_v: false },
+    })
+
+    const continuousReq = axios.get(`${API_BASE}/api/prediction`, {
+      params: {
+        lat: parseFloat(lat),
+        lon: parseFloat(lon),
+        date,
+        depth: parseFloat(depth),
+      }
+    })
+
+    Promise.all([profileReq, nominalReq, continuousReq])
+      .then(([profRes, nomRes, contRes]) => {
+        setProfileData(profRes.data)
+        setNominalProfileData(nomRes.data)
+        setContinuousPoint(contRes.data)
+      })
+      .catch(err => {
+        console.error('API Fetch error:', err)
+        setError(err.response?.data?.detail || err.message || 'API Connection Error')
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }, [lat, lon, date, masks, depth])
+
+  // ── Fetch 2D Transect Data when dashboard is active ────────────────────────
+  useEffect(() => {
+    if (activeDashboard === 'transect') {
+      axios.get(`${API_BASE}/api/transect`, {
+        params: { lat: parseFloat(lat), date }
+      })
+      .then(res => setTransectData(res.data))
+      .catch(err => console.error('Transect error:', err))
+    }
+  }, [lat, date, activeDashboard])
+
+  // ── Hydrographic Calculations ──────────────────────────────────────────────
   const thermoMetrics = useMemo(() => {
     if (!profileData || !profileData.depths || !profileData.temperatures) {
-      return { d20: 124.5, d26: 62.0, mld: 38.5, maxGrad: 0.124, surfaceTemp: 29.8 }
+      return { d20: 120, d26: 65, mld: 45, maxGrad: 0.18, surfaceTemp: 29.2 }
     }
     const { depths, temperatures } = profileData
     const sst = temperatures[0]
 
-    let d20 = 120.0
+    // D20 Isotherm
+    let d20 = depths[depths.length - 1]
     for (let i = 0; i < depths.length - 1; i++) {
       if (temperatures[i] >= 20.0 && temperatures[i + 1] <= 20.0) {
         const frac = (temperatures[i] - 20.0) / (temperatures[i] - temperatures[i + 1] || 1e-5)
@@ -356,16 +323,20 @@ export default function App() {
       }
     }
 
-    let d26 = 55.0
+    // D26 Isotherm (for Cyclone Heat Content)
+    let d26 = 0
     for (let i = 0; i < depths.length - 1; i++) {
       if (temperatures[i] >= 26.0 && temperatures[i + 1] <= 26.0) {
         const frac = (temperatures[i] - 26.0) / (temperatures[i] - temperatures[i + 1] || 1e-5)
         d26 = depths[i] + frac * (depths[i + 1] - depths[i])
         break
+      } else if (temperatures[i] >= 26.0) {
+        d26 = depths[i + 1]
       }
     }
 
-    let mld = 35.0
+    // MLD (0.2°C surface threshold)
+    let mld = 30
     for (let i = 0; i < depths.length; i++) {
       if (sst - temperatures[i] >= 0.2) {
         mld = depths[i]
@@ -373,9 +344,10 @@ export default function App() {
       }
     }
 
+    // Max Vertical Gradient
     let maxGrad = 0
     for (let i = 0; i < depths.length - 1; i++) {
-      const grad = Math.abs((temperatures[i + 1] - temperatures[i]) / (depths[i + 1] - depths[i]))
+      const grad = Math.abs(temperatures[i + 1] - temperatures[i]) / (depths[i + 1] - depths[i] || 1)
       if (grad > maxGrad) maxGrad = grad
     }
 
@@ -424,7 +396,7 @@ export default function App() {
     else if (tchpVal > 50) cat = 'High Cyclone Potential (50–80 kJ/cm²)'
     else if (tchpVal > 25) cat = 'Moderate Potential (25–50 kJ/cm²)'
 
-    let mhw = 'Normal Baseline'
+    let mhw = 'Normal Conditions'
     if (thermoMetrics.surfaceTemp > 30.2) mhw = 'Category II Strong Marine Heatwave'
     else if (thermoMetrics.surfaceTemp > 29.2) mhw = 'Category I Moderate Marine Heatwave'
 
@@ -438,21 +410,21 @@ export default function App() {
   // AI Briefing
   const aiBriefing = useMemo(() => {
     const regionName = profileData?.region || 'North Indian Ocean'
-    const confidence = Math.max(50, 98 - activeDropoutCount * 12)
-    let summary = `Hydrographic assessment at ${lat}°N, ${lon}°E (${regionName}). `
+    const confidence = Math.max(40, 98 - activeDropoutCount * 14)
+    let summary = `Hydrographic diagnosis at ${lat}°N, ${lon}°E (${regionName}). `
 
     if (lat > 12 && lon < 74) {
       summary += `Arabian Sea upwelling regime detected with coastal wind stress curl. Thermocline (D20) is shallow at ${thermoMetrics.d20}m with Mixed Layer Depth at ${thermoMetrics.mld}m. `
     } else if (lat > 12 && lon > 80) {
-      summary += `Bay of Bengal stratified regime with low-salinity river capping. Subsurface heat content (TCHP: ${cycloneMetrics.tchp} kJ/cm², D26 depth: ${thermoMetrics.d26}m) indicates potential energy for tropical cyclogenesis. `
+      summary += `Bay of Bengal stratified regime with low-salinity river capping. Subsurface heat content (TCHP: ${cycloneMetrics.tchp} kJ/cm², D26 depth: ${thermoMetrics.d26}m) creates fertile conditions for tropical cyclone rapid intensification. `
     } else {
       summary += `Equatorial ocean regime with steady thermocline depth at ${thermoMetrics.d20}m and surface temperature of ${thermoMetrics.surfaceTemp}°C. `
     }
 
     if (activeDropoutCount > 0) {
-      summary += `Model is actively compensating for ${activeDropoutCount} missing satellite channel(s) via continuous latent conditioning.`
+      summary += `Note: Model is actively compensating for ${activeDropoutCount} missing satellite channel(s) using Fourier INR latent conditioning. Calibrated uncertainty increased accordingly.`
     } else {
-      summary += `All satellite observational channels (SST, SSS, SSH, Wind) are active and validated.`
+      summary += `All satellite observational channels (SST, SSS, SSH, Wind) are active and unmasked.`
     }
 
     return { text: summary, confidence }
@@ -490,25 +462,13 @@ export default function App() {
   const downloadJSON = () => {
     if (!profileData) return
     const exportObj = {
-      metadata: {
-        model: 'OceanEmbed v2.4 Continuous Implicit Neural Representation',
-        target_coordinates: { latitude: lat, longitude: lon },
-        timestamp: date,
-        active_sensor_dropouts: masks,
-      },
-      diagnostics: {
-        d20_thermocline_depth_m: thermoMetrics.d20,
-        d26_isotherm_depth_m: thermoMetrics.d26,
-        mixed_layer_depth_m: thermoMetrics.mld,
-        max_thermocline_gradient_c_per_m: thermoMetrics.maxGrad,
-        tropical_cyclone_heat_potential_kj_cm2: cycloneMetrics.tchp,
-        mhw_classification: cycloneMetrics.mhwStatus,
-      },
-      vertical_profile: profileData.depths.map((d, i) => ({
-        depth_m: d,
-        temperature_c: profileData.temperatures[i],
-        uncertainty_c: profileData.uncertainties ? profileData.uncertainties[i] : null,
-      })),
+      project: 'OceanEmbed',
+      timestamp: new Date().toISOString(),
+      query: { lat, lon, date, continuous_depth: depth, masks },
+      thermocline_metrics: thermoMetrics,
+      cyclone_heat_potential: cycloneMetrics,
+      profile: profileData,
+      continuous_query: continuousPoint,
       ai_briefing: aiBriefing,
     }
     const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' })
@@ -525,7 +485,7 @@ export default function App() {
   // ── Render 2D Canvas Transect ──────────────────────────────────────────────
   const canvasRef = useRef(null)
   useEffect(() => {
-    if (activeModule !== 'transect' || !transectData || !canvasRef.current) return
+    if (activeDashboard !== 'transect' || !transectData || !canvasRef.current) return
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     const width = canvas.width
@@ -549,23 +509,23 @@ export default function App() {
       if (norm < 0.25) {
         const t = norm / 0.25
         r = Math.floor(10 + 20 * t)
-        g = Math.floor(50 + 80 * t)
-        b = Math.floor(140 + 100 * t)
+        g = Math.floor(30 + 100 * t)
+        b = Math.floor(120 + 135 * t)
       } else if (norm < 0.5) {
         const t = (norm - 0.25) / 0.25
         r = Math.floor(30 + 10 * t)
-        g = Math.floor(130 + 90 * t)
-        b = Math.floor(240 - 120 * t)
+        g = Math.floor(130 + 100 * t)
+        b = Math.floor(255 - 150 * t)
       } else if (norm < 0.75) {
         const t = (norm - 0.5) / 0.25
-        r = Math.floor(40 + 190 * t)
-        g = Math.floor(220 + 20 * t)
-        b = Math.floor(120 - 100 * t)
+        r = Math.floor(40 + 200 * t)
+        g = Math.floor(230 + 10 * t)
+        b = Math.floor(105 - 90 * t)
       } else {
         const t = (norm - 0.75) / 0.25
-        r = Math.floor(230 + 20 * t)
-        g = Math.floor(240 - 170 * t)
-        b = Math.floor(20 + 10 * t)
+        r = Math.floor(240 + 15 * t)
+        g = Math.floor(240 - 180 * t)
+        b = Math.floor(15 + 10 * t)
       }
       return `rgb(${r}, ${g}, ${b})`
     }
@@ -578,11 +538,10 @@ export default function App() {
       }
     }
 
-    // D20 Isotherm dashed contour
     ctx.beginPath()
     ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 2
-    ctx.setLineDash([5, 4])
+    ctx.lineWidth = 2.5
+    ctx.setLineDash([6, 4])
     d20_contour.forEach((dVal, i) => {
       const x = i * cellW + cellW / 2
       const maxD = depths[depths.length - 1]
@@ -593,366 +552,432 @@ export default function App() {
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Active buoy vertical line
     const buoyNormX = (lon - 45.0) / (105.0 - 45.0)
     const buoyX = buoyNormX * width
-    ctx.strokeStyle = '#0f172a'
+    ctx.strokeStyle = '#00f0ff'
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(buoyX, 0)
     ctx.lineTo(buoyX, height)
     ctx.stroke()
 
-    ctx.fillStyle = '#0f172a'
+    ctx.fillStyle = '#00f0ff'
     ctx.beginPath()
-    ctx.arc(buoyX, 10, 5, 0, Math.PI * 2)
+    ctx.arc(buoyX, 10, 6, 0, Math.PI * 2)
     ctx.fill()
     ctx.strokeStyle = '#ffffff'
     ctx.lineWidth = 1.5
     ctx.stroke()
-  }, [activeModule, transectData, lon])
-
-  const currentModuleObj = MODULES.find(m => m.id === activeModule) || MODULES[0]
+  }, [activeDashboard, transectData, lon])
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-app)' }}>
+    <div style={{ minHeight: '100vh', padding: '16px 24px 32px 24px', maxWidth: '1650px', margin: '0 auto' }}>
       
-      {/* ──────────────────────────────────────────────────────────────────────────
-          1. LEFT FIXED VERTICAL SIDEBAR (270px)
-      ────────────────────────────────────────────────────────────────────────── */}
-      <aside style={{
-        width: '270px',
-        minWidth: '270px',
-        maxWidth: '270px',
-        backgroundColor: '#ffffff',
-        borderRight: '1px solid var(--border-subtle)',
-        height: '100vh',
-        position: 'sticky',
-        top: 0,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
-        zIndex: 100,
-        overflowY: 'auto'
-      }}>
-        <div>
-          {/* Brand Header */}
-          <div style={{ padding: '20px 18px 16px 18px', borderBottom: '1px solid var(--border-subtle)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '20px' }}>🌊</span>
-                <span style={{ fontSize: '17px', fontWeight: '800', color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>OceanEmbed</span>
-              </div>
-              <span className="sci-badge sci-badge-primary">v2.4 SOTA</span>
+      {/* ── TOP HEADER ──────────────────────────────────────────────────────── */}
+      <header className="glass-card" style={{ padding: '14px 22px', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'linear-gradient(135deg, #00f0ff, #10b981)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 22px rgba(0,240,255,0.45)' }}>
+            <span style={{ fontSize: '24px' }}>🌊</span>
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h1 style={{ fontSize: '22px', fontWeight: '800', letterSpacing: '-0.5px', color: '#ffffff' }}>OceanEmbed</h1>
+              <span className="badge-neon">v2.4 SOTA</span>
             </div>
-            <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
               Continuous 3D Subsurface Ocean Temperature, Stratification & Cyclone Inversion Suite
             </p>
           </div>
-
-          {/* Navigation Menu */}
-          <nav style={{ padding: '12px 10px' }}>
-            <div style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '6px 10px', marginBottom: '4px' }}>
-              Modules
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-              {MODULES.map(mod => {
-                const isActive = activeModule === mod.id
-                return (
-                  <button
-                    key={mod.id}
-                    onClick={() => setActiveModule(mod.id)}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      padding: '9px 12px',
-                      border: 'none',
-                      borderLeft: isActive ? '3px solid var(--primary)' : '3px solid transparent',
-                      borderRadius: 'var(--radius-sm)',
-                      backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
-                      color: isActive ? 'var(--primary-text)' : 'var(--text-secondary)',
-                      fontSize: '13px',
-                      fontWeight: isActive ? '600' : '500',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'background-color 0.12s ease, color 0.12s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) {
-                        e.currentTarget.style.backgroundColor = '#f8fafc'
-                        e.currentTarget.style.color = 'var(--text-primary)'
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) {
-                        e.currentTarget.style.backgroundColor = 'transparent'
-                        e.currentTarget.style.color = 'var(--text-secondary)'
-                      }
-                    }}
-                  >
-                    <span style={{ fontSize: '16px' }}>{mod.icon}</span>
-                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {mod.label}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </nav>
         </div>
 
-        {/* Sidebar Status Footer */}
-        <div style={{ padding: '14px 18px', borderTop: '1px solid var(--border-subtle)', backgroundColor: '#fafafa' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px', fontSize: '11px' }}>
-            <span style={{ color: 'var(--text-muted)' }}>Inference Engine:</span>
-            <span className="sci-badge sci-badge-success">Operational</span>
-          </div>
-          <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>
-            Grid: Continuous [0–1000m]
-          </div>
+        {/* Action Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setShowUserGuide(!showUserGuide)}
+            style={{
+              background: showUserGuide ? 'rgba(0,240,255,0.2)' : 'rgba(255,255,255,0.06)',
+              color: showUserGuide ? '#00f0ff' : '#cbd5e1',
+              border: `1px solid ${showUserGuide ? '#00f0ff' : 'rgba(255,255,255,0.12)'}`,
+              padding: '8px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span>ℹ️ User Guide</span>
+          </button>
+
+          <button
+            onClick={() => setIsPlayingSeason(!isPlayingSeason)}
+            style={{
+              background: isPlayingSeason ? 'rgba(244,63,94,0.18)' : 'rgba(0,240,255,0.14)',
+              color: isPlayingSeason ? '#f43f5e' : '#00f0ff',
+              border: `1px solid ${isPlayingSeason ? 'rgba(244,63,94,0.5)' : 'rgba(0,240,255,0.4)'}`,
+              padding: '8px 16px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            <span>{isPlayingSeason ? '⏸ Pause Monsoon Cycle' : '▶ Play Monsoon Cycle'}</span>
+          </button>
+
+          <button
+            onClick={downloadCSV}
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              color: '#e2e8f0',
+              border: '1px solid rgba(255,255,255,0.12)',
+              padding: '8px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+            }}
+          >
+            📥 Export CSV
+          </button>
+
+          <button
+            onClick={downloadJSON}
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              color: '#e2e8f0',
+              border: '1px solid rgba(255,255,255,0.12)',
+              padding: '8px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: '600',
+              cursor: 'pointer',
+            }}
+          >
+            📥 Export JSON
+          </button>
         </div>
-      </aside>
+      </header>
 
-      {/* ──────────────────────────────────────────────────────────────────────────
-          2. RIGHT MAIN CONTENT AREA
-      ────────────────────────────────────────────────────────────────────────── */}
-      <main style={{ flex: 1, minWidth: 0, padding: '24px 32px 48px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        
-        {/* ── Top Header / Breadcrumbs & Action Bar ────────────────────────────── */}
-        <header className="sci-card" style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span>OceanEmbed</span>
-              <span>/</span>
-              <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{currentModuleObj.label}</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-light)', marginTop: '2px', fontFamily: 'JetBrains Mono' }}>
-              Coordinates: {lat}°N, {lon}°E • Date: {date}
-            </div>
+      {/* ── USER GUIDE / QUICK HELP DRAWER ─────────────────────────────────── */}
+      {showUserGuide && (
+        <div className="glass-card" style={{ padding: '18px 22px', marginBottom: '14px', borderLeft: '4px solid #00f0ff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#00f0ff' }}>
+              📖 How to Navigate the OceanEmbed Suite
+            </h3>
+            <button onClick={() => setShowUserGuide(false)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '15px' }}>✕ Close</button>
           </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => setShowUserGuide(!showUserGuide)}
-              className="sci-btn"
-              style={{ backgroundColor: showUserGuide ? 'var(--primary-light)' : '#ffffff' }}
-            >
-              <span>ℹ️</span> User Guide
-            </button>
-
-            <button
-              onClick={() => setIsPlayingSeason(!isPlayingSeason)}
-              className={isPlayingSeason ? 'sci-btn sci-btn-danger' : 'sci-btn sci-btn-primary'}
-            >
-              <span>{isPlayingSeason ? '⏸' : '▶'}</span>
-              <span>{isPlayingSeason ? 'Pause Season Cycle' : 'Play Monsoon Cycle'}</span>
-            </button>
-
-            <button onClick={downloadCSV} className="sci-btn">
-              <span>📥</span> Export CSV
-            </button>
-
-            <button onClick={downloadJSON} className="sci-btn">
-              <span>📥</span> Export JSON
-            </button>
-          </div>
-        </header>
-
-        {/* ── User Guide Modal / Callout ─────────────────────────────────────────── */}
-        {showUserGuide && (
-          <div className="sci-card" style={{ padding: '16px 20px', borderLeft: '4px solid var(--primary)', backgroundColor: '#f0f9ff' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-              <h3 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--primary-text)' }}>
-                📖 OceanEmbed Scientific Data Portal Guide
-              </h3>
-              <button onClick={() => setShowUserGuide(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '14px' }}>✕ Close</button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>
-              <div><strong>1. Left Navigation:</strong> Use the fixed sidebar to switch between 3D Inversion, Map & Outages, Cyclone Heat (TCHP), 2D Transects, ARGO Matchups, and SOTA Benchmarks.</div>
-              <div><strong>2. Operational Presets:</strong> Click any scenario below to immediately center onto known oceanographic regimes (e.g. Cyclone Amphan, Somali Upwelling).</div>
-              <div><strong>3. Fault Tolerance:</strong> Toggle satellite dropouts in Module 2 to verify zero-out mask performance with calibrated uncertainty bounds.</div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Operational Ocean Scenarios ────────────────────────────────────────── */}
-        <section>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-            <h2 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Operational Ocean Scenarios
-            </h2>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Click to load regional hydrographic presets</span>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '10px' }}>
-            {PRESET_SCENARIOS.map(sc => {
-              const isSelected = (lat === sc.lat && lon === sc.lon) || activeScenarioId === sc.id
-              return (
-                <div
-                  key={sc.id}
-                  onClick={() => {
-                    setLat(sc.lat)
-                    setLon(sc.lon)
-                    setDate(sc.date)
-                    setActiveScenarioId(sc.id)
-                  }}
-                  className="sci-card"
-                  style={{
-                    padding: '12px 14px',
-                    cursor: 'pointer',
-                    border: isSelected ? '1.5px solid var(--primary)' : '1px solid var(--border-subtle)',
-                    backgroundColor: isSelected ? 'var(--primary-light)' : '#ffffff',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '16px' }}>{sc.icon}</span>
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: isSelected ? 'var(--primary-text)' : 'var(--text-primary)' }}>
-                        {sc.name}
-                      </span>
-                    </div>
-                    {isSelected && <span className="sci-badge sci-badge-primary">ACTIVE</span>}
-                  </div>
-                  <div style={{ fontSize: '11px', color: isSelected ? 'var(--primary-text)' : 'var(--text-muted)', fontFamily: 'JetBrains Mono', marginBottom: '4px' }}>
-                    {sc.lat}°N, {sc.lon}°E • {sc.tag}
-                  </div>
-                  <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                    {sc.desc}
-                  </p>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* ── Ocean Metrics (5-Column Clean Cards) ─────────────────────────────── */}
-        <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
-          
-          {/* Card 1: D20 Thermocline */}
-          <div className="sci-card" style={{ padding: '12px 16px', borderLeft: '3px solid #0284c7' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>D20 Thermocline Depth</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', margin: '4px 0 2px 0' }}>
-              <span style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>
-                {thermoMetrics.d20}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>m</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>20°C Isotherm base</div>
-          </div>
-
-          {/* Card 2: Mixed Layer Depth */}
-          <div className="sci-card" style={{ padding: '12px 16px', borderLeft: '3px solid #7c3aed' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Mixed Layer Depth (MLD)</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', margin: '4px 0 2px 0' }}>
-              <span style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>
-                {thermoMetrics.mld}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>m</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>ΔT = 0.2°C threshold</div>
-          </div>
-
-          {/* Card 3: Max Gradient */}
-          <div className="sci-card" style={{ padding: '12px 16px', borderLeft: '3px solid #059669' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Stratification Gradient</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', margin: '4px 0 2px 0' }}>
-              <span style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>
-                {thermoMetrics.maxGrad}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>°C/m</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Peak vertical slope</div>
-          </div>
-
-          {/* Card 4: SST */}
-          <div className="sci-card" style={{ padding: '12px 16px', borderLeft: '3px solid #ea580c' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Sea Surface Temp (SST)</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', margin: '4px 0 2px 0' }}>
-              <span style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>
-                {thermoMetrics.surfaceTemp}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>°C</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Observed 1mm skin layer</div>
-          </div>
-
-          {/* Card 5: TCHP */}
-          <div className="sci-card" style={{ padding: '12px 16px', borderLeft: '3px solid #dc2626' }}>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600', textTransform: 'uppercase' }}>Cyclone Heat (TCHP)</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px', margin: '4px 0 2px 0' }}>
-              <span style={{ fontSize: '22px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>
-                {cycloneMetrics.tchp}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>kJ/cm²</span>
-            </div>
-            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{cycloneMetrics.category.split(' ')[0]} Risk</div>
-          </div>
-
-        </section>
-
-        {/* ── Main Visualization Area (Selected Module Panel) ─────────────────── */}
-        <section className="sci-card" style={{ minHeight: '440px' }}>
-          
-          {/* Header of Active Module Panel */}
-          <div className="sci-card-header">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px', fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6' }}>
             <div>
-              <h2 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                {currentModuleObj.label}
-              </h2>
-              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                {currentModuleObj.shortDesc}
-              </p>
+              <strong style={{ color: '#fff' }}>1. Quick Ocean Scenarios:</strong> Click any of the 5 scenario cards below to load pre-configured regional dynamics (e.g. Cyclone Amphan, Somali Upwelling).
             </div>
+            <div>
+              <strong style={{ color: '#fff' }}>2. Total Left-Side Navigation:</strong> Select any module switch on the left column to immediately open its dedicated interactive workspace on the right.
+            </div>
+            <div>
+              <strong style={{ color: '#fff' }}>3. Satellite Fault Simulation:</strong> Test model robustness against cloud-cover dropouts by selecting "Ocean Basin Map & Sensor Lab" on the left navigation.
+            </div>
+          </div>
+        </div>
+      )}
 
-            {activeModule === 'overview' && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={showUncertainty}
-                    onChange={e => setShowUncertainty(e.target.checked)}
-                  />
-                  <span>±1σ Uncertainty Band</span>
-                </label>
+      {/* ── PROMINENT QUICK SCENARIOS SECTION ───────────────────────────────── */}
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: '#00f0ff', textTransform: 'uppercase', letterSpacing: '0.6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            ⚡ Operational Ocean Scenarios (Click to Load):
+          </span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+            Instant North Indian Ocean Hydrographic Presets
+          </span>
+        </div>
 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={compareNominal}
-                    onChange={e => setCompareNominal(e.target.checked)}
-                  />
-                  <span>Dual Baseline Overlay</span>
-                </label>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={showArgo}
-                    onChange={e => setShowArgo(e.target.checked)}
-                  />
-                  <span>ARGO Float CTD Matchup</span>
-                </label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' }}>
+          {PRESET_SCENARIOS.map(sc => {
+            const isSelected = (lat === sc.lat && lon === sc.lon) || activeScenarioId === sc.id
+            return (
+              <div
+                key={sc.id}
+                onClick={() => {
+                  setLat(sc.lat)
+                  setLon(sc.lon)
+                  setDate(sc.date)
+                  setActiveScenarioId(sc.id)
+                }}
+                className="glass-card"
+                style={{
+                  padding: '14px 16px',
+                  cursor: 'pointer',
+                  border: isSelected ? '2px solid #00f0ff' : '1px solid rgba(255,255,255,0.08)',
+                  background: isSelected ? 'linear-gradient(135deg, rgba(0,240,255,0.18) 0%, rgba(16,185,129,0.12) 100%)' : 'rgba(13,22,45,0.7)',
+                  boxShadow: isSelected ? '0 0 20px rgba(0,240,255,0.25)' : 'none',
+                  transform: isSelected ? 'translateY(-2px)' : 'none',
+                  transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '20px' }}>{sc.icon}</span>
+                    <span style={{ fontSize: '13px', fontWeight: '800', color: isSelected ? '#ffffff' : '#e2e8f0' }}>
+                      {sc.name}
+                    </span>
+                  </div>
+                  {isSelected && (
+                    <span className="badge-neon" style={{ fontSize: '9px', padding: '2px 6px' }}>ACTIVE</span>
+                  )}
+                </div>
+                <div style={{ fontSize: '10px', color: '#00f0ff', fontWeight: 'bold', marginBottom: '4px', fontFamily: 'JetBrains Mono' }}>
+                  {sc.lat}°N, {sc.lon}°E • {sc.tag}
+                </div>
+                <p style={{ color: 'var(--text-muted)', fontSize: '11px', lineHeight: '1.4' }}>
+                  {sc.desc}
+                </p>
               </div>
-            )}
+            )
+          })}
+        </div>
+      </div>
+
+      {/* ── TOP KPI TELEMETRY CARDS (5 CLEAR GLASS CARDS) ───────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+        
+        {/* Card 1: D20 Thermocline */}
+        <div className="glass-card" style={{ padding: '14px 16px', borderLeft: '4px solid #00f0ff' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase' }}>
+              D20 Thermocline Depth
+            </span>
+            <span style={{ fontSize: '10px', color: '#00f0ff', background: 'rgba(0,240,255,0.12)', padding: '1px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+              20°C Base
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '4px' }}>
+            <span style={{ fontSize: '26px', fontWeight: '800', color: '#ffffff', fontFamily: 'JetBrains Mono' }}>
+              {thermoMetrics.d20}
+            </span>
+            <span style={{ color: '#00f0ff', fontSize: '14px', fontWeight: '700' }}>m</span>
+          </div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '11px', marginTop: '2px' }}>
+            Depth where ocean reaches 20°C
+          </div>
+        </div>
+
+        {/* Card 2: MLD */}
+        <div className="glass-card" style={{ padding: '14px 16px', borderLeft: '4px solid #a855f7' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase' }}>
+              Mixed Layer Depth (MLD)
+            </span>
+            <span style={{ fontSize: '10px', color: '#a855f7', background: 'rgba(168,85,247,0.12)', padding: '1px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+              ΔT = 0.2°C
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '4px' }}>
+            <span style={{ fontSize: '26px', fontWeight: '800', color: '#ffffff', fontFamily: 'JetBrains Mono' }}>
+              {thermoMetrics.mld}
+            </span>
+            <span style={{ color: '#a855f7', fontSize: '14px', fontWeight: '700' }}>m</span>
+          </div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '11px', marginTop: '2px' }}>
+            Surface uniform isothermal layer
+          </div>
+        </div>
+
+        {/* Card 3: Max Gradient */}
+        <div className="glass-card" style={{ padding: '14px 16px', borderLeft: '4px solid #f59e0b' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase' }}>
+              Stratification Gradient
+            </span>
+            <span style={{ fontSize: '10px', color: '#f59e0b', background: 'rgba(245,158,11,0.12)', padding: '1px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+              ∂T/∂z Peak
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '4px' }}>
+            <span style={{ fontSize: '26px', fontWeight: '800', color: '#ffffff', fontFamily: 'JetBrains Mono' }}>
+              {thermoMetrics.maxGrad}
+            </span>
+            <span style={{ color: '#f59e0b', fontSize: '14px', fontWeight: '700' }}>°C/m</span>
+          </div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '11px', marginTop: '2px' }}>
+            Peak thermal barrier stability
+          </div>
+        </div>
+
+        {/* Card 4: Surface Temp */}
+        <div className="glass-card" style={{ padding: '14px 16px', borderLeft: '4px solid #10b981' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase' }}>
+              Sea Surface Temp (SST)
+            </span>
+            <span style={{ fontSize: '10px', color: '#10b981', background: 'rgba(16,185,129,0.12)', padding: '1px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+              Skin Layer
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '4px' }}>
+            <span style={{ fontSize: '26px', fontWeight: '800', color: '#ffffff', fontFamily: 'JetBrains Mono' }}>
+              {thermoMetrics.surfaceTemp}
+            </span>
+            <span style={{ color: '#10b981', fontSize: '14px', fontWeight: '700' }}>°C</span>
+          </div>
+          <div style={{ color: 'var(--text-dim)', fontSize: '11px', marginTop: '2px' }}>
+            Satellite observed skin temp
+          </div>
+        </div>
+
+        {/* Card 5: TCHP & MHW */}
+        <div className="glass-card" style={{ padding: '14px 16px', borderLeft: '4px solid #f43f5e' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '700', textTransform: 'uppercase' }}>
+              Cyclone Heat (TCHP)
+            </span>
+            <span style={{ fontSize: '10px', color: '#f43f5e', background: 'rgba(244,63,94,0.12)', padding: '1px 6px', borderRadius: '4px', fontWeight: 'bold' }}>
+              D26: {thermoMetrics.d26}m
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '4px' }}>
+            <span style={{ fontSize: '26px', fontWeight: '800', color: '#ffffff', fontFamily: 'JetBrains Mono' }}>
+              {cycloneMetrics.tchp}
+            </span>
+            <span style={{ color: '#f43f5e', fontSize: '14px', fontWeight: '700' }}>kJ/cm²</span>
+          </div>
+          <div style={{ color: '#f43f5e', fontSize: '11px', marginTop: '2px', fontWeight: '600' }}>
+            {cycloneMetrics.category.split(' ')[0]} Risk • {cycloneMetrics.mhwStatus.split(' ')[0]}
+          </div>
+        </div>
+
+      </div>
+
+      {/* ── MAIN WORKSPACE GRID: TOTAL LEFT SIDE NAVIGATION + RIGHT WORKSPACE ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '16px', alignItems: 'start' }}>
+        
+        {/* ── TOTAL LEFT SIDE: VERTICAL SEPARATE MODULE SWITCH ROWS ──────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ fontSize: '12px', fontWeight: '800', color: '#00f0ff', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '2px' }}>
+            📂 Navigation Modules:
           </div>
 
-          {/* Module Content Body */}
-          <div className="sci-card-body">
+          {[
+            { id: 'overview', icon: '📊', label: '1. 3D Thermal Inversion Profile', desc: 'Continuous depth inversion (0–1000m) with ±1σ uncertainty' },
+            { id: 'map_sensors', icon: '🗺️', label: '2. Ocean Basin Map & Sensor Lab', desc: 'Interactive domain with satellite outage simulator' },
+            { id: 'cyclone', icon: '🎯', label: '3. Cyclone Heat (TCHP) & Marine Heatwaves', desc: 'Upper-ocean heat content & cyclone intensification' },
+            { id: 'transect', icon: '🌊', label: '4. 2D Basin Zonal Transect', desc: 'Depth-longitude cross-section across 45°E–105°E' },
+            { id: 'argo', icon: '🎯', label: '5. ARGO In-Situ CTD Matchup', desc: 'Real-world physical CTD profiling float validation' },
+            { id: 'ablations', icon: '🔬', label: '6. Continuous INR & SOTA Ablations', desc: 'Continuous coordinate probe & ablation metrics' },
+          ].map(tab => {
+            const isActive = activeDashboard === tab.id
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveDashboard(tab.id)}
+                className="glass-card"
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '14px 16px',
+                  background: isActive
+                    ? 'linear-gradient(135deg, rgba(0, 240, 255, 0.22) 0%, rgba(16, 185, 129, 0.16) 100%)'
+                    : 'linear-gradient(135deg, rgba(14, 25, 52, 0.75) 0%, rgba(8, 16, 36, 0.65) 100%)',
+                  color: isActive ? '#00f0ff' : '#e2e8f0',
+                  border: isActive ? '1.5px solid #00f0ff' : '1px solid rgba(255, 255, 255, 0.08)',
+                  boxShadow: isActive ? '0 0 20px rgba(0, 240, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12)' : '0 4px 15px rgba(0, 0, 0, 0.3)',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontSize: '22px' }}>{tab.icon}</span>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: isActive ? '800' : '700', color: isActive ? '#00f0ff' : '#ffffff' }}>
+                      {tab.label}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      {tab.desc}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {isActive ? (
+                    <span className="badge-neon" style={{ fontSize: '9px', padding: '2px 6px' }}>ACTIVE</span>
+                  ) : (
+                    <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>➔</span>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* ── RIGHT WORKSPACE: ACTIVE DASHBOARD DISPLAY & COPILOT ─────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          
+          {/* Active Dashboard Container */}
+          <div className="glass-card" style={{ padding: '22px', minHeight: '480px' }}>
             
-            {/* ── MODULE 1: 3D THERMAL INVERSION PROFILE ───────────────────────── */}
-            {activeModule === 'overview' && (
+            {/* ── DASHBOARD 1: 3D SUBSURFACE THERMAL INVERSION ───────────────── */}
+            {activeDashboard === 'overview' && (
               <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '10px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff' }}>
+                      Continuous Temperature Inversion Profile (0–1000m)
+                    </h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
+                      Active Coordinates: <span style={{ color: '#00f0ff', fontFamily: 'JetBrains Mono', fontWeight: 'bold' }}>{lat}°N, {lon}°E</span> ({profileData?.region || 'North Indian Ocean'}) • Date: <span style={{ color: '#00f0ff', fontFamily: 'JetBrains Mono' }}>{date}</span>
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#cbd5e1', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={showUncertainty}
+                        onChange={e => setShowUncertainty(e.target.checked)}
+                        style={{ accentColor: '#00f0ff' }}
+                      />
+                      <span>±1σ Uncertainty Band</span>
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#cbd5e1', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={compareNominal}
+                        onChange={e => setCompareNominal(e.target.checked)}
+                        style={{ accentColor: '#00f0ff' }}
+                      />
+                      <span>Dual Baseline Overlay</span>
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#cbd5e1', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={showArgo}
+                        onChange={e => setShowArgo(e.target.checked)}
+                        style={{ accentColor: '#10b981' }}
+                      />
+                      <span>ARGO CTD Float Matchup</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* SVG Visualizer */}
                 {profileData ? (
-                  <div style={{ position: 'relative', width: '100%', height: '380px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+                  <div style={{ position: 'relative', width: '100%', height: '380px', background: 'rgba(3,8,22,0.9)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
                     <svg viewBox="0 0 700 380" style={{ width: '100%', height: '100%' }}>
                       <defs>
-                        <linearGradient id="sciUncertainty" x1="0%" y1="0%" x2="100%" y2="0%">
-                          <stop offset="0%" stopColor="#0284c7" stopOpacity="0.2" />
-                          <stop offset="100%" stopColor="#0284c7" stopOpacity="0.08" />
+                        <linearGradient id="cyanUncertainty" x1="0%" y1="0%" x2="100%" y2="0%">
+                          <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.25" />
+                          <stop offset="100%" stopColor="#00f0ff" stopOpacity="0.05" />
                         </linearGradient>
                       </defs>
 
@@ -961,7 +986,7 @@ export default function App() {
                         const x = 60 + (temp / 32) * 580
                         return (
                           <g key={temp}>
-                            <line x1={x} y1={20} x2={x} y2={340} stroke="#e2e8f0" strokeDasharray="2 2" />
+                            <line x1={x} y1={20} x2={x} y2={340} stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
                             <text x={x} y={360} fill="#64748b" fontSize="11" textAnchor="middle" fontFamily="JetBrains Mono">{temp}°C</text>
                           </g>
                         )
@@ -972,7 +997,7 @@ export default function App() {
                         const y = 20 + (d / 1000) * 320
                         return (
                           <g key={d}>
-                            <line x1={60} y1={y} x2={640} y2={y} stroke="#e2e8f0" strokeDasharray="2 2" />
+                            <line x1={60} y1={y} x2={640} y2={y} stroke="rgba(255,255,255,0.06)" strokeDasharray="3 3" />
                             <text x={50} y={y + 4} fill="#64748b" fontSize="11" textAnchor="end" fontFamily="JetBrains Mono">{d}m</text>
                           </g>
                         )
@@ -983,9 +1008,9 @@ export default function App() {
                         const d20Y = 20 + (thermoMetrics.d20 / 1000) * 320
                         return (
                           <g>
-                            <line x1={60} y1={d20Y} x2={640} y2={d20Y} stroke="#0284c7" strokeWidth="1.5" strokeDasharray="4 4" />
-                            <rect x={645} y={d20Y - 9} width="44" height="18" rx="3" fill="#e0f2fe" stroke="#0284c7" strokeWidth="1" />
-                            <text x={667} y={d20Y + 3} fill="#0369a1" fontSize="10" textAnchor="middle" fontWeight="bold">D20</text>
+                            <line x1={60} y1={d20Y} x2={640} y2={d20Y} stroke="#00f0ff" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.7" />
+                            <rect x={645} y={d20Y - 9} width="48" height="18" rx="4" fill="rgba(0,240,255,0.18)" stroke="rgba(0,240,255,0.5)" />
+                            <text x={669} y={d20Y + 3} fill="#00f0ff" fontSize="10" textAnchor="middle" fontWeight="bold">D20</text>
                           </g>
                         )
                       })()}
@@ -995,9 +1020,9 @@ export default function App() {
                         const mldY = 20 + (thermoMetrics.mld / 1000) * 320
                         return (
                           <g>
-                            <line x1={60} y1={mldY} x2={640} y2={mldY} stroke="#7c3aed" strokeWidth="1.5" strokeDasharray="4 4" />
-                            <rect x={645} y={mldY - 9} width="44" height="18" rx="3" fill="#f3e8ff" stroke="#7c3aed" strokeWidth="1" />
-                            <text x={667} y={mldY + 3} fill="#6b21a8" fontSize="10" textAnchor="middle" fontWeight="bold">MLD</text>
+                            <line x1={60} y1={mldY} x2={640} y2={mldY} stroke="#a855f7" strokeWidth="1.5" strokeDasharray="4 4" opacity="0.7" />
+                            <rect x={645} y={mldY - 9} width="48" height="18" rx="4" fill="rgba(168,85,247,0.18)" stroke="rgba(168,85,247,0.5)" />
+                            <text x={669} y={mldY + 3} fill="#a855f7" fontSize="10" textAnchor="middle" fontWeight="bold">MLD</text>
                           </g>
                         )
                       })()}
@@ -1018,7 +1043,7 @@ export default function App() {
                           return `${x},${y}`
                         })
                         const pathD = `M ${ptsUpper.join(' L ')} L ${ptsLower.join(' L ')} Z`
-                        return <path d={pathD} fill="url(#sciUncertainty)" />
+                        return <path d={pathD} fill="url(#cyanUncertainty)" />
                       })()}
 
                       {/* Nominal Baseline Curve */}
@@ -1033,9 +1058,10 @@ export default function App() {
                           <path
                             d={`M ${pathPoints}`}
                             fill="none"
-                            stroke="#64748b"
+                            stroke="#ffffff"
                             strokeWidth="2"
                             strokeDasharray="4 4"
+                            opacity="0.8"
                           />
                         )
                       })()}
@@ -1052,8 +1078,9 @@ export default function App() {
                           <path
                             d={`M ${pathPoints}`}
                             fill="none"
-                            stroke="#0284c7"
-                            strokeWidth="2.5"
+                            stroke="#00f0ff"
+                            strokeWidth="3.5"
+                            style={{ filter: 'drop-shadow(0 0 10px rgba(0,240,255,0.7))' }}
                           />
                         )
                       })()}
@@ -1065,19 +1092,20 @@ export default function App() {
                         const y = 20 + (d / 1000) * 320
                         return (
                           <g key={i}>
-                            <circle cx={x} cy={y} r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="1.5" />
+                            <circle cx={x} cy={y} r="4" fill="#10b981" stroke="#ffffff" strokeWidth="1.5" />
                           </g>
                         )
                       })}
 
-                      {/* Interactive Hover Tracker */}
+                      {/* Interactive Hover Probe */}
                       {hoveredData && (
                         <g>
-                          <line x1={60} y1={hoveredData.y} x2={640} y2={hoveredData.y} stroke="#94a3b8" strokeDasharray="2 2" />
-                          <circle cx={hoveredData.x} cy={hoveredData.y} r="4" fill="#0284c7" stroke="#ffffff" strokeWidth="2" />
+                          <line x1={60} y1={hoveredData.y} x2={640} y2={hoveredData.y} stroke="rgba(255,255,255,0.4)" strokeDasharray="2 2" />
+                          <circle cx={hoveredData.x} cy={hoveredData.y} r="5" fill="#ffffff" stroke="#00f0ff" strokeWidth="2.5" />
                         </g>
                       )}
 
+                      {/* Mouse Tracker */}
                       <rect
                         x={60}
                         y={20}
@@ -1097,349 +1125,407 @@ export default function App() {
                       />
                     </svg>
 
-                    {/* Clean Hover Tooltip */}
+                    {/* Hover Tooltip */}
                     {hoveredData && (
                       <div style={{
                         position: 'absolute',
-                        top: '12px',
-                        right: '16px',
-                        backgroundColor: '#ffffff',
-                        border: '1px solid var(--border-medium)',
-                        borderRadius: 'var(--radius-sm)',
-                        padding: '6px 12px',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                        top: '14px',
+                        right: '18px',
+                        background: 'rgba(11,20,44,0.95)',
+                        border: '1px solid #00f0ff',
+                        borderRadius: '8px',
+                        padding: '8px 14px',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
                         pointerEvents: 'none',
                         fontFamily: 'JetBrains Mono',
-                        fontSize: '11px',
-                        lineHeight: '1.5'
+                        fontSize: '12px',
                       }}>
-                        <div style={{ color: 'var(--primary-text)', fontWeight: 'bold' }}>Depth: {hoveredData.depth} m</div>
-                        <div style={{ color: 'var(--text-primary)' }}>Temp: {hoveredData.temp} °C</div>
-                        <div style={{ color: 'var(--text-muted)' }}>Uncertainty: ±0.34 °C</div>
+                        <div style={{ color: '#00f0ff', fontWeight: 'bold' }}>Depth: {hoveredData.depth} m</div>
+                        <div style={{ color: '#ffffff' }}>Temp: {hoveredData.temp} °C</div>
+                        <div style={{ color: '#94a3b8', fontSize: '11px' }}>Uncertainty: ±0.34 °C</div>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div style={{ height: '380px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                    {loading ? 'Synthesizing Continuous 3D Inversion Profile...' : 'No profile data loaded'}
+                  <div style={{ height: '380px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+                    {loading ? 'Synthesizing Continuous 3D Profile...' : 'No profile data loaded'}
                   </div>
                 )}
               </div>
             )}
 
-            {/* ── MODULE 2: OCEAN BASIN MAP & SENSOR LAB ───────────────────────── */}
-            {activeModule === 'map_sensors' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '20px' }}>
-                
-                {/* Map Area */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>Domain Map (5°N–30°N, 45°E–105°E)</span>
-                    <span style={{ fontSize: '11px', color: 'var(--primary-text)', fontFamily: 'JetBrains Mono', fontWeight: 'bold' }}>
-                      Selected: {lat}°N, {lon}°E
-                    </span>
-                  </div>
-                  <div
-                    ref={mapContainerRef}
-                    style={{
-                      width: '100%',
-                      height: '350px',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-subtle)',
-                      overflow: 'hidden',
-                    }}
-                  />
-                  <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Click map to relocate sounding probe.</span>
-                    <span>● Green: Scenarios | ● Red: Active Probe</span>
-                  </div>
-                </div>
-
-                {/* Satellite Outage Simulator */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>Satellite Channel Fault Tolerance</span>
-                    <span className={activeDropoutCount > 0 ? 'sci-badge sci-badge-danger' : 'sci-badge sci-badge-success'}>
-                      {activeDropoutCount > 0 ? `${activeDropoutCount} Missing` : 'All 4 Active'}
-                    </span>
-                  </div>
-                  <p style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-                    Toggle individual satellite sensor channels to evaluate OceanEmbed's zero-out mask fault tolerance:
-                  </p>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    
-                    {/* SST */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: missingSST ? 'var(--danger)' : 'var(--text-primary)' }}>SST Skin (Thermal Radiometer)</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>MODIS / OSTIA 1mm boundary skin</div>
-                      </div>
-                      <button
-                        onClick={() => setMissingSST(!missingSST)}
-                        className={missingSST ? 'sci-btn sci-btn-danger' : 'sci-btn sci-btn-primary'}
-                        style={{ padding: '4px 10px', fontSize: '11px' }}
-                      >
-                        {missingSST ? 'Dropped (Simulated)' : 'Active (Online)'}
-                      </button>
-                    </div>
-
-                    {/* SSS */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: missingSSS ? 'var(--danger)' : 'var(--text-primary)' }}>SSS Salinity (L-Band Microwave)</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>SMAP / SMOS halocline barrier capping</div>
-                      </div>
-                      <button
-                        onClick={() => setMissingSSS(!missingSSS)}
-                        className={missingSSS ? 'sci-btn sci-btn-danger' : 'sci-btn sci-btn-primary'}
-                        style={{ padding: '4px 10px', fontSize: '11px' }}
-                      >
-                        {missingSSS ? 'Dropped (Simulated)' : 'Active (Online)'}
-                      </button>
-                    </div>
-
-                    {/* SSH */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: missingSSH ? 'var(--danger)' : 'var(--text-primary)' }}>SSH Altimetry (Radar Altimeter)</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>AVISO / DUACS geostrophic eddies</div>
-                      </div>
-                      <button
-                        onClick={() => setMissingSSH(!missingSSH)}
-                        className={missingSSH ? 'sci-btn sci-btn-danger' : 'sci-btn sci-btn-primary'}
-                        style={{ padding: '4px 10px', fontSize: '11px' }}
-                      >
-                        {missingSSH ? 'Dropped (Simulated)' : 'Active (Online)'}
-                      </button>
-                    </div>
-
-                    {/* Wind */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: missingWind ? 'var(--danger)' : 'var(--text-primary)' }}>Wind Stress Vectors (Scatterometer)</div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>ERA5 / ASCAT Ekman upwelling curl</div>
-                      </div>
-                      <button
-                        onClick={() => setMissingWind(!missingWind)}
-                        className={missingWind ? 'sci-btn sci-btn-danger' : 'sci-btn sci-btn-primary'}
-                        style={{ padding: '4px 10px', fontSize: '11px' }}
-                      >
-                        {missingWind ? 'Dropped (Simulated)' : 'Active (Online)'}
-                      </button>
-                    </div>
-
-                  </div>
-                </div>
-
-              </div>
-            )}
-
-            {/* ── MODULE 3: CYCLONE HEAT (TCHP) & MARINE HEATWAVES ──────────────── */}
-            {activeModule === 'cyclone' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
-                
-                {/* Left Assessment Card */}
-                <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>Upper Ocean Thermal Energy</span>
-                    <span className="sci-badge sci-badge-warning">{cycloneMetrics.category}</span>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '36px', fontWeight: '800', color: '#dc2626', fontFamily: 'JetBrains Mono' }}>
-                      {cycloneMetrics.tchp}
-                    </span>
-                    <span style={{ fontSize: '14px', color: 'var(--text-muted)', fontWeight: 'bold' }}>kJ/cm²</span>
-                  </div>
-
-                  {/* Progress Gauge */}
-                  <div style={{ width: '100%', height: '10px', backgroundColor: '#e2e8f0', borderRadius: '5px', overflow: 'hidden', marginBottom: '16px' }}>
-                    <div style={{ width: `${Math.min(100, (cycloneMetrics.tchp / 100) * 100)}%`, height: '100%', backgroundColor: cycloneMetrics.tchp > 80 ? '#dc2626' : cycloneMetrics.tchp > 50 ? '#ea580c' : '#059669', borderRadius: '5px' }}></div>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>D26 Isotherm Depth</div>
-                      <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono', marginTop: '2px' }}>
-                        {thermoMetrics.d26} m
-                      </div>
-                    </div>
-                    <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Marine Heatwave Status</div>
-                      <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginTop: '4px' }}>
-                        {cycloneMetrics.mhwStatus}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Operational Thresholds Table */}
-                <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                  <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
-                    IMD / NOAA Operational Cyclone Intensification Thresholds
-                  </h4>
-                  <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid var(--border-medium)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                        <th style={{ padding: '6px 4px' }}>TCHP Range</th>
-                        <th style={{ padding: '6px 4px' }}>Category</th>
-                        <th style={{ padding: '6px 4px' }}>Operational Implication</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        <td style={{ padding: '8px 4px', fontFamily: 'JetBrains Mono', color: '#059669' }}>&lt; 25 kJ/cm²</td>
-                        <td style={{ padding: '8px 4px', fontWeight: '600' }}>Low</td>
-                        <td style={{ padding: '8px 4px', color: 'var(--text-secondary)' }}>Inadequate thermal support for sustained cyclogenesis</td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        <td style={{ padding: '8px 4px', fontFamily: 'JetBrains Mono', color: '#d97706' }}>25–50 kJ/cm²</td>
-                        <td style={{ padding: '8px 4px', fontWeight: '600' }}>Moderate</td>
-                        <td style={{ padding: '8px 4px', color: 'var(--text-secondary)' }}>Standard cyclonic storm sustainment</td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        <td style={{ padding: '8px 4px', fontFamily: 'JetBrains Mono', color: '#ea580c' }}>50–80 kJ/cm²</td>
-                        <td style={{ padding: '8px 4px', fontWeight: '600' }}>High</td>
-                        <td style={{ padding: '8px 4px', color: 'var(--text-secondary)' }}>Category 3+ Severe Cyclonic Storm acceleration</td>
-                      </tr>
-                      <tr>
-                        <td style={{ padding: '8px 4px', fontFamily: 'JetBrains Mono', color: '#dc2626' }}>&gt; 80 kJ/cm²</td>
-                        <td style={{ padding: '8px 4px', fontWeight: '600' }}>Extreme</td>
-                        <td style={{ padding: '8px 4px', color: 'var(--text-secondary)' }}>Rapid intensification (e.g. Super Cyclones Amphan, Fani)</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-              </div>
-            )}
-
-            {/* ── MODULE 4: 2D BASIN ZONAL TRANSECT ───────────────────────────── */}
-            {activeModule === 'transect' && (
+            {/* ── DASHBOARD 2: OCEAN BASIN MAP & SENSOR LAB ───────────────────── */}
+            {activeDashboard === 'map_sensors' && (
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>
-                    Depth-Longitude Zonal Slice across 45°E → 105°E at {lat}°N
-                  </span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>
-                    Active Sounding Longitude: {lon}°E
+                <div style={{ marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff' }}>
+                    Ocean Basin Geolocation & Satellite Sensor Fault-Tolerance Lab
+                  </h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
+                    Interact with the full North Indian Ocean domain (5–30°N, 45–105°E) and test zero-out mask sensor dropouts in real time
+                  </p>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
+                  
+                  {/* Full Interactive Map */}
+                  <div style={{ background: '#020617', padding: '14px', borderRadius: '14px', border: '1px solid rgba(0,240,255,0.2)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 'bold', color: '#ffffff' }}>🗺️ North Indian Ocean Bathymetric Map</span>
+                      <span style={{ fontSize: '11px', color: '#00f0ff', fontFamily: 'JetBrains Mono', fontWeight: 'bold' }}>
+                        Active Pin: {lat}°N, {lon}°E
+                      </span>
+                    </div>
+                    <div
+                      ref={mapContainerRef}
+                      style={{
+                        width: '100%',
+                        height: '340px',
+                        borderRadius: '10px',
+                        overflow: 'hidden',
+                      }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                      <span>Tip: Click anywhere or drag the cyan buoy pin to update location.</span>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <span style={{ color: '#10b981' }}>● Preset Buoys</span>
+                        <span style={{ color: '#00f0ff' }}>● Active Probe</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Satellite Sensor Outage Simulator */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#ffffff' }}>
+                          🛰️ Satellite Sensor Fault Simulator
+                        </span>
+                        <span className={activeDropoutCount > 0 ? 'badge-coral' : 'badge-emerald'}>
+                          {activeDropoutCount > 0 ? `${activeDropoutCount} SENSORS DROPPED` : 'ALL SENSORS ACTIVE'}
+                        </span>
+                      </div>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '12px', lineHeight: '1.5', marginBottom: '14px' }}>
+                        Toggle individual satellite channels to simulate heavy cloud cover, instrument failure, or sensor outages. OceanEmbed's zero-out mask training guarantees continuous inversion with calibrated uncertainty.
+                      </p>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        
+                        {/* SST Switch */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${missingSST ? '#f43f5e' : 'rgba(255,255,255,0.06)'}` }}>
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: missingSST ? '#f43f5e' : '#ffffff' }}>
+                              Sea Surface Temp (SST Skin)
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>MODIS / OSTIA 1mm thermal skin layer</div>
+                          </div>
+                          <button
+                            onClick={() => setMissingSST(!missingSST)}
+                            style={{
+                              background: missingSST ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)',
+                              color: missingSST ? '#f43f5e' : '#10b981',
+                              border: `1px solid ${missingSST ? '#f43f5e' : '#10b981'}`,
+                              padding: '6px 14px',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {missingSST ? '✖ DROPPED' : '✔ ACTIVE'}
+                          </button>
+                        </div>
+
+                        {/* SSS Switch */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${missingSSS ? '#f43f5e' : 'rgba(255,255,255,0.06)'}` }}>
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: missingSSS ? '#f43f5e' : '#ffffff' }}>
+                              Sea Surface Salinity (SSS)
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>SMAP / SMOS halocline & freshwater capping</div>
+                          </div>
+                          <button
+                            onClick={() => setMissingSSS(!missingSSS)}
+                            style={{
+                              background: missingSSS ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)',
+                              color: missingSSS ? '#f43f5e' : '#10b981',
+                              border: `1px solid ${missingSSS ? '#f43f5e' : '#10b981'}`,
+                              padding: '6px 14px',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {missingSSS ? '✖ DROPPED' : '✔ ACTIVE'}
+                          </button>
+                        </div>
+
+                        {/* SSH Switch */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${missingSSH ? '#f43f5e' : 'rgba(255,255,255,0.06)'}` }}>
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: missingSSH ? '#f43f5e' : '#ffffff' }}>
+                              Sea Surface Height (SSH / SLA)
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>AVISO / DUACS altimetry geostrophic eddies</div>
+                          </div>
+                          <button
+                            onClick={() => setMissingSSH(!missingSSH)}
+                            style={{
+                              background: missingSSH ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)',
+                              color: missingSSH ? '#f43f5e' : '#10b981',
+                              border: `1px solid ${missingSSH ? '#f43f5e' : '#10b981'}`,
+                              padding: '6px 14px',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {missingSSH ? '✖ DROPPED' : '✔ ACTIVE'}
+                          </button>
+                        </div>
+
+                        {/* Wind Switch */}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(0,0,0,0.3)', padding: '10px 14px', borderRadius: '10px', border: `1px solid ${missingWind ? '#f43f5e' : 'rgba(255,255,255,0.06)'}` }}>
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: 'bold', color: missingWind ? '#f43f5e' : '#ffffff' }}>
+                              Wind Stress Vectors (u10, v10)
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>ERA5 ECMWF Ekman pumping & upwelling curl</div>
+                          </div>
+                          <button
+                            onClick={() => setMissingWind(!missingWind)}
+                            style={{
+                              background: missingWind ? 'rgba(244,63,94,0.2)' : 'rgba(16,185,129,0.2)',
+                              color: missingWind ? '#f43f5e' : '#10b981',
+                              border: `1px solid ${missingWind ? '#f43f5e' : '#10b981'}`,
+                              padding: '6px 14px',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                              fontWeight: 'bold',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {missingWind ? '✖ DROPPED' : '✔ ACTIVE'}
+                          </button>
+                        </div>
+
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+            {/* ── DASHBOARD 3: CYCLONE HEAT POTENTIAL & MARINE HEATWAVES ─────── */}
+            {activeDashboard === 'cyclone' && (
+              <div>
+                <div style={{ marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#f43f5e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span>🎯</span> Tropical Cyclone Heat Potential (TCHP) & Marine Heatwave Center
+                  </h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
+                    Numerical integration of excess thermal energy above 26°C (Q = ρ · Cp · ∫(T - 26) dz from surface to D26) fueling rapid cyclone intensification
+                  </p>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
+                  <div style={{ background: 'rgba(244,63,94,0.04)', padding: '20px', borderRadius: '14px', border: '1px solid rgba(244,63,94,0.25)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '14px' }}>
+                      <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#ffffff' }}>Active Basin Heat Assessment</span>
+                      <span className="badge-coral">{cycloneMetrics.category}</span>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '14px' }}>
+                      <span style={{ fontSize: '42px', fontWeight: '800', color: '#f43f5e', fontFamily: 'JetBrains Mono' }}>
+                        {cycloneMetrics.tchp}
+                      </span>
+                      <span style={{ fontSize: '18px', color: 'var(--text-muted)', fontWeight: 'bold' }}>kJ/cm²</span>
+                    </div>
+
+                    {/* Progress Bar Gauge */}
+                    <div style={{ width: '100%', height: '14px', background: 'rgba(255,255,255,0.08)', borderRadius: '7px', overflow: 'hidden', marginBottom: '16px' }}>
+                      <div style={{ width: `${Math.min(100, (cycloneMetrics.tchp / 100) * 100)}%`, height: '100%', background: 'linear-gradient(to right, #10b981, #f59e0b, #f43f5e)', borderRadius: '7px' }}></div>
+                    </div>
+
+                    {/* Hydrographic Parameters */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>D26 Isotherm Depth</div>
+                        <div style={{ color: '#00f0ff', fontSize: '18px', fontWeight: 'bold', fontFamily: 'JetBrains Mono', marginTop: '3px' }}>
+                          {thermoMetrics.d26} m
+                        </div>
+                      </div>
+
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Marine Heatwave Status</div>
+                        <div style={{ color: '#f59e0b', fontSize: '14px', fontWeight: 'bold', marginTop: '3px' }}>
+                          {cycloneMetrics.mhwStatus}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Physics & Operational Guidelines */}
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#00f0ff', fontSize: '15px', marginBottom: '12px', fontWeight: 'bold' }}>
+                      Operational Cyclone Risk Thresholds
+                    </h4>
+                    <ul style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.8', paddingLeft: '18px' }}>
+                      <li><strong style={{ color: '#10b981' }}>TCHP &lt; 25 kJ/cm²:</strong> Low Risk. Insufficient thermal energy to sustain tropical storms.</li>
+                      <li><strong style={{ color: '#f59e0b' }}>TCHP 25–50 kJ/cm²:</strong> Moderate Risk. Can support regular cyclogenesis.</li>
+                      <li><strong style={{ color: '#f43f5e' }}>TCHP 50–80 kJ/cm²:</strong> High Intensification. Sustains Category 3+ Severe Cyclonic Storms.</li>
+                      <li><strong style={{ color: '#ff0055' }}>TCHP &gt; 80 kJ/cm²:</strong> Extreme Super Cyclone Risk (e.g. Cyclone Amphan, Fani).</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── DASHBOARD 4: 2D BASIN TRANSECT ─────────────────────────────── */}
+            {activeDashboard === 'transect' && (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <div>
+                    <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff' }}>
+                      2D Basin Zonal Cross-Section (45°E → 105°E at {lat}°N)
+                    </h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
+                      Thermal cross-section showing Somali upwelling, equatorial thermocline slope, and Bay of Bengal heat reservoir
+                    </p>
+                  </div>
+                  <span style={{ fontSize: '13px', color: '#00f0ff', fontFamily: 'JetBrains Mono', fontWeight: 'bold' }}>
+                    Active Buoy: {lon}°E
                   </span>
                 </div>
 
-                <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', padding: '10px', backgroundColor: '#ffffff' }}>
+                <div style={{ background: '#020617', padding: '14px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
                   <canvas
                     ref={canvasRef}
                     width={700}
-                    height={280}
-                    style={{ width: '100%', height: '280px', display: 'block', borderRadius: 'var(--radius-sm)' }}
+                    height={300}
+                    style={{ width: '100%', height: '300px', borderRadius: '10px', display: 'block' }}
                   />
 
-                  {/* Longitude Axis */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', color: 'var(--text-muted)', fontSize: '11px', fontFamily: 'JetBrains Mono' }}>
-                    <span>45°E (Somalia)</span>
-                    <span>60°E (W. Arabian Sea)</span>
-                    <span>75°E (S. India)</span>
+                  {/* Axis labels */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', color: '#94a3b8', fontSize: '12px', fontFamily: 'JetBrains Mono' }}>
+                    <span>45°E (Somali Upwelling)</span>
+                    <span>65°E (Arabian Sea)</span>
+                    <span>80°E (Sri Lanka / Central)</span>
                     <span>90°E (Bay of Bengal)</span>
                     <span>105°E (Andaman Sea)</span>
                   </div>
 
                   {/* Colormap Legend */}
-                  <div style={{ marginTop: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>4°C</span>
-                    <div style={{ width: '240px', height: '10px', borderRadius: '4px', background: 'linear-gradient(to right, rgb(10,50,140), rgb(30,130,240), rgb(40,220,120), rgb(230,70,20))' }}></div>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>30°C</span>
+                  <div style={{ marginTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '12px', color: '#94a3b8', fontFamily: 'JetBrains Mono' }}>4°C (Abyss)</span>
+                    <div style={{ width: '280px', height: '12px', borderRadius: '6px', background: 'linear-gradient(to right, rgb(10,30,120), rgb(30,130,255), rgb(40,230,105), rgb(255,60,15))' }}></div>
+                    <span style={{ fontSize: '12px', color: '#94a3b8', fontFamily: 'JetBrains Mono' }}>30°C (Surface)</span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ── MODULE 5: ARGO IN-SITU CTD MATCHUP ──────────────────────────── */}
-            {activeModule === 'argo' && (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '20px' }}>
-                
-                {/* Metric Summary */}
-                <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)' }}>WMO In-Situ CTD Float Matchup</span>
-                    <span className="sci-badge sci-badge-success">Float #2902741</span>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
-                    <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Overall RMSE</div>
-                      <div style={{ fontSize: '18px', fontWeight: '700', color: '#059669', fontFamily: 'JetBrains Mono' }}>0.38 °C</div>
-                    </div>
-                    <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Mean Bias</div>
-                      <div style={{ fontSize: '18px', fontWeight: '700', color: '#0284c7', fontFamily: 'JetBrains Mono' }}>-0.04 °C</div>
-                    </div>
-                    <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pearson Correlation (r)</div>
-                      <div style={{ fontSize: '18px', fontWeight: '700', color: '#7c3aed', fontFamily: 'JetBrains Mono' }}>0.984</div>
-                    </div>
-                    <div style={{ padding: '10px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Anomaly Corr (ACC)</div>
-                      <div style={{ fontSize: '18px', fontWeight: '700', color: '#d97706', fontFamily: 'JetBrains Mono' }}>0.942</div>
-                    </div>
-                  </div>
-
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
-                    Calculated over 1,248 collocated ARGO profiling cycles across the North Indian Ocean within ±0.25° spatial and ±3-day temporal bounds.
+            {/* ── DASHBOARD 5: ARGO IN-SITU VALIDATION SCORECARD ─────────────── */}
+            {activeDashboard === 'argo' && (
+              <div>
+                <div style={{ marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff' }}>
+                    ARGO In-Situ Float Matchup & Validation Engine
+                  </h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
+                    Direct comparison against WMO physical CTD profiling floats in the North Indian Ocean
                   </p>
                 </div>
 
-                {/* Layer Breakdown Table */}
-                <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                  <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
-                    Stratified Depth Error Analysis
-                  </h4>
-                  <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr style={{ borderBottom: '1px solid var(--border-medium)', textAlign: 'left', color: 'var(--text-muted)' }}>
-                        <th style={{ padding: '6px 4px' }}>Depth Layer</th>
-                        <th style={{ padding: '6px 4px' }}>OceanEmbed (INR)</th>
-                        <th style={{ padding: '6px 4px' }}>WOA18 Climatology</th>
-                        <th style={{ padding: '6px 4px' }}>Skill Score</th>
-                      </tr>
-                    </thead>
-                    <tbody style={{ fontFamily: 'JetBrains Mono' }}>
-                      <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        <td style={{ padding: '8px 4px', color: 'var(--text-primary)' }}>0 – 100 m</td>
-                        <td style={{ padding: '8px 4px', color: '#059669', fontWeight: 'bold' }}>0.31 °C</td>
-                        <td style={{ padding: '8px 4px', color: '#dc2626' }}>1.12 °C</td>
-                        <td style={{ padding: '8px 4px', color: '#0284c7' }}>+72.3%</td>
-                      </tr>
-                      <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                        <td style={{ padding: '8px 4px', color: 'var(--text-primary)' }}>100 – 300 m (D20)</td>
-                        <td style={{ padding: '8px 4px', color: '#059669', fontWeight: 'bold' }}>0.44 °C</td>
-                        <td style={{ padding: '8px 4px', color: '#dc2626' }}>1.68 °C</td>
-                        <td style={{ padding: '8px 4px', color: '#0284c7' }}>+73.8%</td>
-                      </tr>
-                      <tr>
-                        <td style={{ padding: '8px 4px', color: 'var(--text-primary)' }}>300 – 1000 m</td>
-                        <td style={{ padding: '8px 4px', color: '#059669', fontWeight: 'bold' }}>0.28 °C</td>
-                        <td style={{ padding: '8px 4px', color: '#dc2626' }}>0.89 °C</td>
-                        <td style={{ padding: '8px 4px', color: '#0284c7' }}>+68.5%</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '18px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#10b981', fontSize: '15px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 'bold' }}>
+                      <span>🎯</span> Matchup Metrics (WMO #2902741)
+                    </h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Overall RMSE</div>
+                        <div style={{ color: '#10b981', fontSize: '20px', fontWeight: 'bold', fontFamily: 'JetBrains Mono' }}>0.38 °C</div>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Mean Bias</div>
+                        <div style={{ color: '#00f0ff', fontSize: '20px', fontWeight: 'bold', fontFamily: 'JetBrains Mono' }}>-0.04 °C</div>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Pearson (r)</div>
+                        <div style={{ color: '#a855f7', fontSize: '20px', fontWeight: 'bold', fontFamily: 'JetBrains Mono' }}>0.984</div>
+                      </div>
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Anomaly Corr (ACC)</div>
+                        <div style={{ color: '#f59e0b', fontSize: '20px', fontWeight: 'bold', fontFamily: 'JetBrains Mono' }}>0.942</div>
+                      </div>
+                    </div>
+                    <div style={{ color: 'var(--text-dim)', fontSize: '12px', lineHeight: '1.6' }}>
+                      Validation performed across 1,248 collocated ARGO profiles within ±0.25° and ±3 days in the Arabian Sea and Bay of Bengal basins.
+                    </div>
+                  </div>
 
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '18px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#00f0ff', fontSize: '15px', marginBottom: '14px', fontWeight: 'bold' }}>
+                      Stratified Depth Error Analysis
+                    </h4>
+                    <table style={{ width: '100%', fontSize: '13px', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-muted)', textAlign: 'left' }}>
+                          <th style={{ padding: '8px' }}>Depth Layer</th>
+                          <th style={{ padding: '8px' }}>OceanEmbed</th>
+                          <th style={{ padding: '8px' }}>WOA18 Baseline</th>
+                          <th style={{ padding: '8px' }}>Skill Score</th>
+                        </tr>
+                      </thead>
+                      <tbody style={{ fontFamily: 'JetBrains Mono' }}>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '10px 8px', color: '#ffffff' }}>0 – 100 m</td>
+                          <td style={{ padding: '10px 8px', color: '#10b981' }}>0.31 °C</td>
+                          <td style={{ padding: '10px 8px', color: '#f43f5e' }}>1.12 °C</td>
+                          <td style={{ padding: '10px 8px', color: '#00f0ff' }}>+72.3%</td>
+                        </tr>
+                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '10px 8px', color: '#ffffff' }}>100 – 300 m (D20)</td>
+                          <td style={{ padding: '10px 8px', color: '#10b981' }}>0.44 °C</td>
+                          <td style={{ padding: '10px 8px', color: '#f43f5e' }}>1.68 °C</td>
+                          <td style={{ padding: '10px 8px', color: '#00f0ff' }}>+73.8%</td>
+                        </tr>
+                        <tr>
+                          <td style={{ padding: '10px 8px', color: '#ffffff' }}>300 – 1000 m</td>
+                          <td style={{ padding: '10px 8px', color: '#10b981' }}>0.28 °C</td>
+                          <td style={{ padding: '10px 8px', color: '#f43f5e' }}>0.89 °C</td>
+                          <td style={{ padding: '10px 8px', color: '#00f0ff' }}>+68.5%</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* ── MODULE 6: CONTINUOUS INR & SOTA ABLATIONS ──────────────────── */}
-            {activeModule === 'ablations' && (
+            {/* ── DASHBOARD 6: CONTINUOUS INR & SOTA ABLATIONS ────────────────── */}
+            {activeDashboard === 'ablations' && (
               <div>
-                
-                {/* Continuous Depth Slider */}
-                <div style={{ padding: '14px 18px', backgroundColor: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 'var(--radius-sm)', marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--primary-text)' }}>
-                      Continuous Depth Coordinate Scanner:
-                    </span>
-                    <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)', fontFamily: 'JetBrains Mono' }}>
+                <div style={{ marginBottom: '16px' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '800', color: '#ffffff' }}>
+                    Continuous INR Architecture & Model Ablation Benchmarks
+                  </h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
+                    Direct continuous depth coordinate probing and comparative accuracy benchmarks across 6 models
+                  </p>
+                </div>
+
+                {/* Continuous Depth Probe */}
+                <div style={{ background: 'rgba(0,240,255,0.03)', padding: '18px', borderRadius: '14px', border: '1px solid rgba(0,240,255,0.2)', marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '12px' }}>
+                    <label style={{ fontSize: '14px', fontWeight: 'bold', color: '#00f0ff' }}>
+                      Arbitrary Continuous Depth Scanner:
+                    </label>
+                    <span style={{ fontSize: '22px', fontWeight: '800', color: '#ffffff', fontFamily: 'JetBrains Mono' }}>
                       {depth.toFixed(1)} m
                     </span>
                   </div>
@@ -1451,26 +1537,26 @@ export default function App() {
                     step="0.5"
                     value={depth}
                     onChange={e => setDepth(parseFloat(e.target.value))}
-                    style={{ width: '100%', marginBottom: '12px' }}
+                    style={{ width: '100%', marginBottom: '16px' }}
                   />
 
                   {continuousPoint && (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-                      <div style={{ padding: '8px 12px', backgroundColor: '#ffffff', border: '1px solid #bae6fd', borderRadius: 'var(--radius-sm)' }}>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Predicted Temp</div>
-                        <div style={{ fontSize: '16px', fontWeight: '700', color: 'var(--primary-text)', fontFamily: 'JetBrains Mono' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Predicted Temp</div>
+                        <div style={{ color: '#00f0ff', fontSize: '20px', fontWeight: 'bold', fontFamily: 'JetBrains Mono' }}>
                           {continuousPoint.temperature.toFixed(2)} °C
                         </div>
                       </div>
-                      <div style={{ padding: '8px 12px', backgroundColor: '#ffffff', border: '1px solid #bae6fd', borderRadius: 'var(--radius-sm)' }}>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Gradient (∂T/∂z)</div>
-                        <div style={{ fontSize: '16px', fontWeight: '700', color: '#059669', fontFamily: 'JetBrains Mono' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Gradient (∂T/∂z)</div>
+                        <div style={{ color: '#10b981', fontSize: '20px', fontWeight: 'bold', fontFamily: 'JetBrains Mono' }}>
                           {continuousPoint.gradient ? continuousPoint.gradient.toFixed(4) : '-0.0412'} °C/m
                         </div>
                       </div>
-                      <div style={{ padding: '8px 12px', backgroundColor: '#ffffff', border: '1px solid #bae6fd', borderRadius: 'var(--radius-sm)' }}>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Uncertainty (σ)</div>
-                        <div style={{ fontSize: '16px', fontWeight: '700', color: '#d97706', fontFamily: 'JetBrains Mono' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.35)', padding: '12px', borderRadius: '10px' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Uncertainty (σ)</div>
+                        <div style={{ color: '#f59e0b', fontSize: '20px', fontWeight: 'bold', fontFamily: 'JetBrains Mono' }}>
                           ± {continuousPoint.uncertainty ? continuousPoint.uncertainty.toFixed(2) : '0.35'} °C
                         </div>
                       </div>
@@ -1480,186 +1566,72 @@ export default function App() {
 
                 {/* Ablation Benchmark Bars */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '20px' }}>
-                  <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                    <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '12px' }}>
-                      Comparative RMSE Benchmark Against Standard Baselines (°C)
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '18px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#00f0ff', fontSize: '15px', marginBottom: '14px', fontWeight: 'bold' }}>
+                      Comparative RMSE Benchmark (°C)
                     </h4>
-
+                    
                     {[
-                      { name: 'OceanEmbed (Continuous Fourier INR)', rmse: 0.38, color: '#0284c7', bold: true },
-                      { name: 'Ablation: No Physics-Informed Loss', rmse: 0.58, color: '#7c3aed' },
-                      { name: 'Ablation: No Fourier Positional Encoding', rmse: 0.69, color: '#d97706' },
+                      { name: 'OceanEmbed (Proposed Continuous INR)', rmse: 0.38, color: '#00f0ff', highlight: true },
+                      { name: 'Ablation: No Physics Loss', rmse: 0.58, color: '#a855f7' },
+                      { name: 'Ablation: No Fourier Positional Encoding', rmse: 0.69, color: '#f59e0b' },
                       { name: 'Baseline: Discrete 15-Level U-Net', rmse: 0.74, color: '#64748b' },
-                      { name: 'Ablation: No Dropout Masks (Missing Data)', rmse: 0.91, color: '#dc2626' },
+                      { name: 'Ablation: No Dropout Masks (Missing Data)', rmse: 0.91, color: '#f43f5e' },
                       { name: 'Baseline: WOA18 Climatology', rmse: 1.42, color: '#ef4444' },
                     ].map(item => (
-                      <div key={item.name} style={{ marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', marginBottom: '3px' }}>
-                          <span style={{ color: item.bold ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: item.bold ? '700' : '500' }}>
+                      <div key={item.name} style={{ marginBottom: '12px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
+                          <span style={{ color: item.highlight ? '#ffffff' : '#94a3b8', fontWeight: item.highlight ? '700' : '500' }}>
                             {item.name}
                           </span>
                           <span style={{ color: item.color, fontFamily: 'JetBrains Mono', fontWeight: 'bold' }}>
                             {item.rmse} °C
                           </span>
                         </div>
-                        <div style={{ width: '100%', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ width: `${(item.rmse / 1.5) * 100}%`, height: '100%', backgroundColor: item.color, borderRadius: '3px' }}></div>
+                        <div style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '4px', overflow: 'hidden' }}>
+                          <div style={{ width: `${(item.rmse / 1.5) * 100}%`, height: '100%', background: item.color, borderRadius: '4px' }}></div>
                         </div>
                       </div>
                     ))}
                   </div>
 
-                  <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                    <h4 style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '10px' }}>
-                      Key Architectural Principles
+                  <div style={{ background: 'rgba(255,255,255,0.03)', padding: '18px', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                    <h4 style={{ color: '#10b981', fontSize: '15px', marginBottom: '14px', fontWeight: 'bold' }}>
+                      Key Architectural Takeaways
                     </h4>
-                    <ul style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.6', paddingLeft: '16px' }}>
-                      <li><strong>Fourier Positional Encoding:</strong> Solves MLP spectral bias, accurately resolving sharp thermocline transitions.</li>
-                      <li><strong>Thermodynamic Stability Guarantee:</strong> Physics loss penalizes unphysical inversions (∂T/∂z &gt; 0).</li>
-                      <li><strong>Continuous Depth Inversion:</strong> Eliminates discrete layer quantization errors inherent in conventional 2D/3D CNNs.</li>
+                    <ul style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.7', paddingLeft: '18px' }}>
+                      <li><strong style={{ color: '#fff' }}>Fourier Positional Encoding:</strong> Overcomes spectral bias, capturing sharp thermocline transitions that standard MLPs blur.</li>
+                      <li><strong style={{ color: '#fff' }}>Physics-Informed Loss:</strong> Completely eliminates unphysical thermodynamic density inversions (dT/dz &gt; 0).</li>
+                      <li><strong style={{ color: '#fff' }}>Continuous INR vs U-Net:</strong> Enables direct continuous sampling at any non-standard depth without interpolation errors.</li>
                     </ul>
                   </div>
                 </div>
-
-              </div>
-            )}
-
-            {/* ── MODULE 7: SIH PITCH & JURY DECK ─────────────────────────────── */}
-            {activeModule === 'pitch_deck' && (
-              <div>
-                {/* Slide Nav */}
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
-                  {['Problem & Scope', 'Architecture & Physics', 'Validation Proofs', 'Operational Impact'].map((s, idx) => (
-                    <button
-                      key={s}
-                      onClick={() => setActiveSlide(idx)}
-                      className="sci-btn"
-                      style={{
-                        backgroundColor: activeSlide === idx ? 'var(--primary-light)' : '#ffffff',
-                        borderColor: activeSlide === idx ? 'var(--primary)' : 'var(--border-subtle)',
-                        color: activeSlide === idx ? 'var(--primary-text)' : 'var(--text-secondary)',
-                        fontWeight: activeSlide === idx ? '700' : '500'
-                      }}
-                    >
-                      Slide {idx + 1}: {s}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Slide 1 */}
-                {activeSlide === 0 && (
-                  <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                    <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
-                      1. Problem Statement & Scientific Motivation
-                    </h3>
-                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '12px' }}>
-                      Satellite observations only perceive the surface skin (SST, SSS, SSH, Wind). However, ocean dynamics, acoustic sound channels, cyclone intensification, and marine heatwaves are governed by <strong>subsurface 3D thermal stratification</strong> down to 1000m.
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <div style={{ padding: '12px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                        <strong style={{ fontSize: '12px', color: 'var(--danger)' }}>Traditional Limitations:</strong>
-                        <ul style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: '1.5', paddingLeft: '14px' }}>
-                          <li>Discrete depth grids fail at intermediate levels.</li>
-                          <li>Prone to density inversions violating hydrodynamics.</li>
-                          <li>Brittle under missing satellite data channels.</li>
-                        </ul>
-                      </div>
-                      <div style={{ padding: '12px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                        <strong style={{ fontSize: '12px', color: 'var(--primary-text)' }}>OceanEmbed Solution:</strong>
-                        <ul style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '6px', lineHeight: '1.5', paddingLeft: '14px' }}>
-                          <li>Continuous Implicit Neural Representation (INR).</li>
-                          <li>Physics-constrained thermodynamic stability loss.</li>
-                          <li>Zero-out mask sensor dropout robustness.</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Slide 2 */}
-                {activeSlide === 1 && (
-                  <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                    <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
-                      2. Implicit Neural Representation (INR) Architecture
-                    </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-                      <div style={{ padding: '12px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                        <strong>Fourier Coordinate Encoding:</strong>
-                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          Maps scalar depth z into high-dimensional frequency bands: γ(z) = [sin(2^k π z), cos(2^k π z)], preserving sharp thermocline boundaries.
-                        </p>
-                      </div>
-                      <div style={{ padding: '12px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                        <strong>Physics-Informed Loss:</strong>
-                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          L_total = L_NLL + λ_mono · max(0, ∂T/∂z) + λ_reg · ||∂²T/∂z²||, guaranteeing monotonic thermodynamic stratification.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Slide 3 */}
-                {activeSlide === 2 && (
-                  <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                    <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
-                      3. Empirical Validation Proofs
-                    </h3>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', textAlign: 'center' }}>
-                      <div style={{ padding: '12px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>RMSE Error</div>
-                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#059669', fontFamily: 'JetBrains Mono' }}>0.38 °C</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>vs 1.42°C WOA18</div>
-                      </div>
-                      <div style={{ padding: '12px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Pearson Correlation</div>
-                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#0284c7', fontFamily: 'JetBrains Mono' }}>r = 0.984</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Collocated ARGO</div>
-                      </div>
-                      <div style={{ padding: '12px', backgroundColor: '#ffffff', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Inference Latency</div>
-                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#7c3aed', fontFamily: 'JetBrains Mono' }}>&lt; 15 ms</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>Real-time capable</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Slide 4 */}
-                {activeSlide === 3 && (
-                  <div style={{ padding: '16px', backgroundColor: '#f8fafc', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)' }}>
-                    <h3 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>
-                      4. Operational Deployment & Impact
-                    </h3>
-                    <ul style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.7', paddingLeft: '16px' }}>
-                      <li><strong>Early Warning Systems:</strong> Direct calculation of TCHP for IMD/INCOIS cyclone rapid intensification forecasts.</li>
-                      <li><strong>Defense & Acoustics:</strong> Continuous sound velocity profiles (SOFAR channel depth) for naval operations.</li>
-                      <li><strong>Marine Ecology:</strong> Real-time detection of coastal upwelling and marine heatwave stress on coral reef ecosystems.</li>
-                    </ul>
-                  </div>
-                )}
               </div>
             )}
 
           </div>
-        </section>
 
-        {/* ── Oceanographic Analysis & Advisory Report ─────────────────────────── */}
-        <section className="sci-card" style={{ borderLeft: '4px solid var(--primary)', padding: '14px 18px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Oceanographic Analysis & Advisory Summary
-            </span>
-            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-              Confidence Index: <strong style={{ color: 'var(--success)' }}>{aiBriefing.confidence}%</strong>
-            </span>
+          {/* ── AI OCEANOGRAPHIC COPILOT BRIEFING ───────────────────────────── */}
+          <div className="glass-card" style={{ padding: '16px 22px', borderLeft: '4px solid #10b981' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '16px' }}>🤖</span>
+                <span style={{ fontSize: '14px', fontWeight: '700', color: '#10b981' }}>
+                  AI Oceanographic Hydrographic Copilot
+                </span>
+              </div>
+              <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                Satellite Confidence Score: <strong style={{ color: '#10b981' }}>{aiBriefing.confidence}%</strong>
+              </span>
+            </div>
+            <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: '1.6' }}>
+              {aiBriefing.text}
+            </p>
           </div>
-          <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-            {aiBriefing.text}
-          </p>
-        </section>
 
-      </main>
+        </div>
+
+      </div>
 
     </div>
   )
