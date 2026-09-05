@@ -303,10 +303,59 @@ export default function App() {
       })
   }, [lat, lon, date, missingSST, missingSSS, missingSSH, missingWind, maxDepthRange])
 
+  // ── Thermocline Physical Diagnostics ───────────────────────────────────────
+  const thermoMetrics = useMemo(() => {
+    if (!profileData || !profileData.depths || !profileData.temperatures) {
+      return { d20: 124.5, d26: 62.0, mld: 38.5, maxGrad: 0.124, surfaceTemp: 29.8 }
+    }
+    const { depths, temperatures } = profileData
+    const sst = temperatures[0]
+
+    let d20 = 120.0
+    for (let i = 0; i < depths.length - 1; i++) {
+      if (temperatures[i] >= 20.0 && temperatures[i + 1] <= 20.0) {
+        const frac = (temperatures[i] - 20.0) / (temperatures[i] - temperatures[i + 1] || 1e-5)
+        d20 = depths[i] + frac * (depths[i + 1] - depths[i])
+        break
+      }
+    }
+
+    let d26 = 55.0
+    for (let i = 0; i < depths.length - 1; i++) {
+      if (temperatures[i] >= 26.0 && temperatures[i + 1] <= 26.0) {
+        const frac = (temperatures[i] - 26.0) / (temperatures[i] - temperatures[i + 1] || 1e-5)
+        d26 = depths[i] + frac * (depths[i + 1] - depths[i])
+        break
+      }
+    }
+
+    let mld = 35.0
+    for (let i = 0; i < depths.length; i++) {
+      if (sst - temperatures[i] >= 0.2) {
+        mld = depths[i]
+        break
+      }
+    }
+
+    let maxGrad = 0
+    for (let i = 0; i < depths.length - 1; i++) {
+      const grad = Math.abs((temperatures[i + 1] - temperatures[i]) / (depths[i + 1] - depths[i]))
+      if (grad > maxGrad) maxGrad = grad
+    }
+
+    return {
+      d20: Math.round(d20 * 10) / 10,
+      d26: Math.round(d26 * 10) / 10,
+      mld: Math.round(mld * 10) / 10,
+      maxGrad: Math.round(maxGrad * 1000) / 1000,
+      surfaceTemp: Math.round(sst * 100) / 100,
+    }
+  }, [profileData])
+
   // ── Real-time Probe Calculation for Depth Slider ───────────────────────────
   const currentDepthProbe = useMemo(() => {
-    const sst = thermoMetrics.surfaceTemp || 29.5
-    const thermoclineD = thermoMetrics.d20 || 120.0
+    const sst = thermoMetrics?.surfaceTemp || 29.5
+    const thermoclineD = thermoMetrics?.d20 || 120.0
     const tVal = sst - (sst - 3.8) / (1.0 + Math.exp(-(depth - thermoclineD) / 42.0))
     const gradVal = -((sst - 3.8) / 42.0) * Math.exp(-(depth - thermoclineD) / 42.0) / Math.pow(1.0 + Math.exp(-(depth - thermoclineD) / 42.0), 2)
     const uncertVal = 0.24 + (depth / 1000.0) * 0.18 + activeDropoutCount * 0.15
@@ -387,55 +436,6 @@ export default function App() {
     }
     return `rgb(${r}, ${g}, ${b})`
   }
-
-  // ── Thermocline Physical Diagnostics ───────────────────────────────────────
-  const thermoMetrics = useMemo(() => {
-    if (!profileData || !profileData.depths || !profileData.temperatures) {
-      return { d20: 124.5, d26: 62.0, mld: 38.5, maxGrad: 0.124, surfaceTemp: 29.8 }
-    }
-    const { depths, temperatures } = profileData
-    const sst = temperatures[0]
-
-    let d20 = 120.0
-    for (let i = 0; i < depths.length - 1; i++) {
-      if (temperatures[i] >= 20.0 && temperatures[i + 1] <= 20.0) {
-        const frac = (temperatures[i] - 20.0) / (temperatures[i] - temperatures[i + 1] || 1e-5)
-        d20 = depths[i] + frac * (depths[i + 1] - depths[i])
-        break
-      }
-    }
-
-    let d26 = 55.0
-    for (let i = 0; i < depths.length - 1; i++) {
-      if (temperatures[i] >= 26.0 && temperatures[i + 1] <= 26.0) {
-        const frac = (temperatures[i] - 26.0) / (temperatures[i] - temperatures[i + 1] || 1e-5)
-        d26 = depths[i] + frac * (depths[i + 1] - depths[i])
-        break
-      }
-    }
-
-    let mld = 35.0
-    for (let i = 0; i < depths.length; i++) {
-      if (sst - temperatures[i] >= 0.2) {
-        mld = depths[i]
-        break
-      }
-    }
-
-    let maxGrad = 0
-    for (let i = 0; i < depths.length - 1; i++) {
-      const grad = Math.abs((temperatures[i + 1] - temperatures[i]) / (depths[i + 1] - depths[i]))
-      if (grad > maxGrad) maxGrad = grad
-    }
-
-    return {
-      d20: Math.round(d20 * 10) / 10,
-      d26: Math.round(d26 * 10) / 10,
-      mld: Math.round(mld * 10) / 10,
-      maxGrad: Math.round(maxGrad * 1000) / 1000,
-      surfaceTemp: Math.round(sst * 100) / 100,
-    }
-  }, [profileData])
 
   // Tropical Cyclone Heat Potential (TCHP)
   const cycloneMetrics = useMemo(() => {
