@@ -202,6 +202,21 @@ def get_prediction(
 
 # ── Profile endpoint ───────────────────────────────────────────────────────────
 
+@app.get("/api/profile", tags=["Inference"])
+def get_profile_query(
+    lat: float = Query(..., ge=5.0, le=30.0),
+    lon: float = Query(..., ge=45.0, le=105.0),
+    date: str = Query(...),
+) -> Dict[str, Any]:
+    """GET convenience wrapper for a full SIH-depth profile."""
+    engine = get_engine()
+    try:
+        return engine.predict_profile(lat=lat, lon=lon, date=date, depths=SIH_DEPTHS)
+    except Exception as e:
+        logger.error(f"Profile GET failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/profile", tags=["Inference"])
 def get_profile(req: ProfileRequest) -> Dict[str, Any]:
     """Return full temperature profile at a location with uncertainty.
@@ -296,33 +311,34 @@ def get_ablations() -> Dict[str, Any]:
 
 # --- Transect endpoint (2D Depth-Longitude Basin Slice) ------------------------
 
+@app.get("/api/map", tags=["Inference"])
+def get_map(
+    date: str = Query(..., description="Date YYYY-MM-DD"),
+    depth: float = Query(0.0, ge=0.0, le=1000.0),
+    lat_step: float = Query(1.0, ge=0.5, le=5.0),
+    lon_step: float = Query(1.0, ge=0.5, le=5.0),
+) -> Dict[str, Any]:
+    """Coarse North Indian Ocean temperature field at one depth."""
+    engine = get_engine()
+    try:
+        return engine.predict_map(date=date, depth=depth, lat_step=lat_step, lon_step=lon_step)
+    except Exception as e:
+        logger.error(f"Map prediction failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/transect", tags=["Inference"])
 def get_transect(
     lat: float = Query(15.0, ge=5.0, le=30.0, description="Latitude for cross-section (5-30°N)"),
-    date: str = Query("2023-07-15", description="Date in YYYY-MM-DD format"),
+    date: str = Query("2020-07-15", description="Date in YYYY-MM-DD format"),
 ) -> Dict[str, Any]:
     """Return 2D cross-section across Indian Ocean basin (45°E to 105°E)."""
     engine = get_engine()
-    longitudes = [float(lon) for lon in range(45, 106, 2)]
-    transect_depths = [0.0, 10.0, 25.0, 50.0, 75.0, 100.0, 125.0, 150.0, 200.0, 300.0, 500.0, 750.0, 1000.0]
-    
-    matrix = []
-    d20_line = []
-    
-    for lon in longitudes:
-        prof = engine.predict_profile(lat=lat, lon=lon, date=date, depths=transect_depths)
-        matrix.append(prof["temperatures"])
-        d20_line.append(prof["thermocline"]["d20_depth_m"])
-        
-    return {
-        "lat": lat,
-        "date": date,
-        "longitudes": longitudes,
-        "depths": transect_depths,
-        "temperatures_2d": matrix, # [len(longitudes)][len(depths)]
-        "d20_depths": d20_line,
-        "demo": engine.demo_mode,
-    }
+    try:
+        return engine.predict_transect(lat=lat, date=date)
+    except Exception as e:
+        logger.error(f"Transect failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Main entrypoint for direct python execution ------------------------------

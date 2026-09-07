@@ -85,6 +85,27 @@ def test_profile_post_endpoint(client):
     data = res.json()
     assert len(data["temperatures"]) == 15
     assert len(data["uncertainties"]) == 15
+    assert "thermocline" in data
+    assert "d26_depth_m" in data["thermocline"]
+    assert "surface_inputs" in data
+
+
+def test_map_endpoint(client):
+    res = client.get("/api/map?date=2020-06-15&depth=50&lat_step=5&lon_step=5")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["lats"]) > 3
+    assert len(data["temperatures"]) == len(data["lats"])
+    assert len(data["temperatures"][0]) == len(data["lons"])
+
+
+def test_transect_endpoint(client):
+    res = client.get("/api/transect?lat=15&date=2020-07-15")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["longitudes"]) > 5
+    assert len(data["temperatures_2d"]) == len(data["longitudes"])
+    assert "d20_depths" in data
 
 
 if pytest is not None:
@@ -99,4 +120,6 @@ if __name__ == "__main__":
     test_depths_endpoint(c)
     test_prediction_continuous_query(c)
     test_profile_post_endpoint(c)
+    test_map_endpoint(c)
+    test_transect_endpoint(c)
     print("ALL BACKEND ENDPOINT TESTS PASSED!")

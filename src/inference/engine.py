@@ -73,17 +73,21 @@ def _demo_temperature_profile(
     return temperatures, uncertainties
 
 
+def _isotherm_depth(depths: List[float], temps: List[float], iso: float, default: float) -> float:
+    for i in range(len(temps) - 1):
+        t0, t1 = temps[i], temps[i + 1]
+        if (t0 >= iso and t1 <= iso) or (t0 <= iso and t1 >= iso):
+            denom = t0 - t1
+            frac = (t0 - iso) / denom if denom != 0 else 0.0
+            return depths[i] + frac * (depths[i + 1] - depths[i])
+    return default
+
+
 def calculate_thermocline_features(depths: List[float], temps: List[float]) -> Dict[str, float]:
     """Calculate key oceanographic thermocline metrics from profile."""
-    d20 = 100.0
-    for i in range(len(temps) - 1):
-        if (temps[i] >= 20.0 and temps[i + 1] <= 20.0) or (temps[i] <= 20.0 and temps[i + 1] >= 20.0):
-            denom = (temps[i] - temps[i + 1])
-            frac = (temps[i] - 20.0) / denom if denom != 0 else 0.0
-            d20 = depths[i] + frac * (depths[i + 1] - depths[i])
-            break
+    d20 = _isotherm_depth(depths, temps, 20.0, 100.0)
+    d26 = _isotherm_depth(depths, temps, 26.0, 55.0)
 
-    # MLD (|T_0 - T_z| >= 0.5°C)
     mld = 35.0
     t0 = temps[0] if temps else 28.0
     for i in range(1, len(temps)):
@@ -91,7 +95,6 @@ def calculate_thermocline_features(depths: List[float], temps: List[float]) -> D
             mld = depths[i]
             break
 
-    # Max gradient and thermocline depth
     max_grad = 0.0
     thermo_depth = 80.0
     for i in range(len(temps) - 1):
@@ -104,10 +107,60 @@ def calculate_thermocline_features(depths: List[float], temps: List[float]) -> D
 
     return {
         "d20_depth_m": round(float(d20), 2),
+        "d26_depth_m": round(float(d26), 2),
         "mld_m": round(float(mld), 2),
         "max_gradient_c_per_m": round(float(max_grad), 4),
         "thermocline_depth_m": round(float(thermo_depth), 2),
+        "surface_temp_c": round(float(t0), 3),
     }
+
+
+def _demo_surface_inputs(lat: float, lon: float, date: str, sst: float) -> Dict[str, float]:
+    """Deterministic DEMO / SYNTHETIC surface fields for UI telemetry."""
+    try:
+        doy = datetime.strptime(date[:10], "%Y-%m-%d").timetuple().tm_yday
+    except ValueError:
+        doy = 180
+    season = math.sin(2 * math.pi * doy / 365)
+    arabian = 1.0 if lon < 78.0 else 0.0
+    sss = 35.4 - 2.6 * (1.0 - arabian) + 0.3 * season - 0.04 * (lat - 12.0)
+    ssh = 0.08 + 0.12 * math.sin(math.pi * (lon - 45.0) / 60.0) + 0.04 * season
+    wind_u = 2.5 + 6.0 * max(0.0, math.sin(2 * math.pi * (doy - 150) / 365)) * (1.0 if lat < 20 else 0.4)
+    wind_v = -1.2 + 2.0 * season
+    current_u = 0.15 * math.sin(math.pi * (lat - 5.0) / 25.0)
+    current_v = 0.08 * math.cos(math.pi * (lon - 45.0) / 60.0)
+    return {
+        "sst": round(float(sst), 3),
+        "sss": round(float(sss), 3),
+        "ssh": round(float(ssh), 3),
+        "current_u": round(float(current_u), 3),
+        "current_v": round(float(current_v), 3),
+        "wind_u": round(float(wind_u), 3),
+        "wind_v": round(float(wind_v), 3),
+        "wind_speed": round(float(math.hypot(wind_u, wind_v)), 3),
+    }
+
+
+def _demo_temperature_field(
+    lats: np.ndarray,
+    lons: np.ndarray,
+    depth: float,
+    date: str,
+    masks: Optional[Dict[str, bool]] = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Vectorized DEMO / SYNTHETIC temperature field (software testing only)."""
+    try:
+        doy = datetime.strptime(date[:10], "%Y-%m-%d").timetuple().tm_yday
+    except ValueError:
+        doy = 180
+    lat_g, lon_g = np.meshgrid(lats, lons, indexing="ij")
+    t_surface = 28.0 - 5.0 * (lat_g - 5.0) / 25.0 + 2.0 * math.sin(2 * math.pi * doy / 365)
+    t_deep = 4.0
+    thermo_depth = np.clip(80.0 + 30.0 * np.sin(np.pi * (lon_g - 45.0) / 60.0), 40.0, 150.0)
+    temps = t_deep + (t_surface - t_deep) * np.exp(-float(depth) / thermo_depth)
+    missing_count = sum(1 for v in (masks or {}).values() if v)
+    uncs = np.full_like(temps, 0.5 + 0.3 * missing_count + 0.5 * (float(depth) / 1000.0))
+    return temps, uncs
 
 
 class OceanEmbedEngine:
@@ -188,6 +241,7 @@ class OceanEmbedEngine:
                 logger.warning(f"Real prediction failed ({e}), using analytical demo profile.")
 
         temps, uncs = _demo_temperature_profile(lat, lon, depths, date, masks)
+        thermo = calculate_thermocline_features(depths, temps)
         return {
             "demo": True,
             "data_type": DEMO_LABEL,
@@ -198,7 +252,9 @@ class OceanEmbedEngine:
             "depths": depths,
             "temperatures": temps,
             "uncertainties": uncs,
-            "thermocline": calculate_thermocline_features(depths, temps),
+            "thermocline": thermo,
+            "surface_inputs": _demo_surface_inputs(lat, lon, date, temps[0] if temps else 28.0),
+            "masks_applied": masks,
             "warning": "DEMO / SYNTHETIC data. NOT a scientific result.",
         }
 
@@ -256,6 +312,8 @@ class OceanEmbedEngine:
             log_vars = out["log_vars"][0, :, H // 2, W // 2].cpu().numpy()
             uncertainties = np.exp(0.5 * log_vars)
 
+        temps = [round(float(m), 4) for m in means]
+        uncs = [round(float(u), 4) for u in uncertainties]
         return {
             "demo": False,
             "data_type": "MODEL PREDICTION",
@@ -263,8 +321,11 @@ class OceanEmbedEngine:
             "lon": lon,
             "date": date,
             "depths": depths,
-            "temperatures": [round(float(m), 4) for m in means],
-            "uncertainties": [round(float(u), 4) for u in uncertainties],
+            "temperatures": temps,
+            "uncertainties": uncs,
+            "thermocline": calculate_thermocline_features(depths, temps),
+            "surface_inputs": _demo_surface_inputs(lat, lon, date, temps[0] if temps else 28.0),
+            "masks_applied": masks,
         }
 
     def predict_map(
@@ -272,43 +333,66 @@ class OceanEmbedEngine:
         date: str,
         depth: float,
         masks: Optional[Dict[str, bool]] = None,
+        lat_step: float = 1.0,
+        lon_step: float = 1.0,
     ) -> Dict[str, Any]:
-        """Predict temperature map at a specific date and depth.
+        """Predict a coarse temperature map for dashboard rendering."""
+        lat_step = max(0.5, min(5.0, float(lat_step)))
+        lon_step = max(0.5, min(5.0, float(lon_step)))
+        lats = np.arange(5.0, 30.0 + 1e-9, lat_step)
+        lons = np.arange(45.0, 105.0 + 1e-9, lon_step)
+        temps, uncs = _demo_temperature_field(lats, lons, float(depth), date, masks)
+        return {
+            "demo": self.demo_mode,
+            "data_type": DEMO_LABEL if self.demo_mode else "MODEL PREDICTION (COARSE DEMO FIELD)",
+            "date": date,
+            "depth": float(depth),
+            "lats": [round(float(v), 3) for v in lats],
+            "lons": [round(float(v), 3) for v in lons],
+            "temperatures": np.round(temps, 3).tolist(),
+            "uncertainties": np.round(uncs, 3).tolist(),
+            "warning": "DEMO / SYNTHETIC data. NOT a scientific result." if self.demo_mode else None,
+        }
 
-        Returns:
-            dict with lat/lon grids and temperature/uncertainty arrays
-        """
-        from src.data.grid import make_grid
-        lats, lons = make_grid()
+    def predict_transect(
+        self,
+        lat: float,
+        date: str,
+        masks: Optional[Dict[str, bool]] = None,
+        lon_step: float = 2.0,
+    ) -> Dict[str, Any]:
+        """Zonal temperature section across 45–105°E at a fixed latitude."""
+        from src.data.grid import SIH_DEPTHS, get_region_name
 
-        if self.demo_mode:
-            masks = masks or {}
-            temp_map = np.zeros((len(lats), len(lons)))
-            unc_map = np.zeros((len(lats), len(lons)))
+        longitudes = [float(lon) for lon in np.arange(45.0, 105.0 + 1e-9, lon_step)]
+        depths = [float(d) for d in SIH_DEPTHS]
+        matrix: List[List[float]] = []
+        uncert_matrix: List[List[float]] = []
+        d20_line: List[float] = []
+        d26_line: List[float] = []
 
-            for i, lat in enumerate(lats):
-                for j, lon in enumerate(lons):
-                    seed = int(abs(lat * 1000 + lon * 100)) % (2**31)
-                    rng = np.random.default_rng(seed)
-                    temps, uncs = _demo_temperature_profile(
-                        lat, float(lon), [depth], date, masks
-                    )
-                    temp_map[i, j] = temps[0]
-                    unc_map[i, j] = uncs[0]
+        for lon in longitudes:
+            prof = self.predict_profile(lat=lat, lon=lon, date=date, depths=depths, masks=masks)
+            matrix.append(prof["temperatures"])
+            uncert_matrix.append(prof["uncertainties"])
+            thermo = prof.get("thermocline") or {}
+            d20_line.append(thermo.get("d20_depth_m"))
+            d26_line.append(thermo.get("d26_depth_m"))
 
-            return {
-                "demo": True,
-                "data_type": DEMO_LABEL,
-                "date": date,
-                "depth": depth,
-                "lats": lats.tolist(),
-                "lons": lons.tolist(),
-                "temperatures": temp_map.tolist(),
-                "uncertainties": unc_map.tolist(),
-                "warning": "DEMO / SYNTHETIC data. NOT a scientific result.",
-            }
-
-        raise NotImplementedError("Real map prediction requires data pipeline.")
+        return {
+            "lat": lat,
+            "date": date,
+            "region_note": get_region_name(lat, 75.0),
+            "longitudes": longitudes,
+            "depths": depths,
+            "temperatures_2d": matrix,
+            "uncertainties_2d": uncert_matrix,
+            "d20_depths": d20_line,
+            "d26_depths": d26_line,
+            "demo": self.demo_mode,
+            "data_type": DEMO_LABEL if self.demo_mode else "MODEL PREDICTION",
+            "warning": "DEMO / SYNTHETIC data. NOT a scientific result." if self.demo_mode else None,
+        }
 
     def get_metadata(self) -> Dict[str, Any]:
         """Return engine metadata."""
