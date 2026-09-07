@@ -2,31 +2,42 @@
   "model": "OceanEmbed",
   "is_demo_mode": true,
   "scientific_status": "DEMO / SOFTWARE_TEST",
-  "epochs": 2,
-  "best_val_rmse": 15.511189460754395,
-  "total_time_seconds": 48.471503019332886,
+  "epochs": 3,
+  "best_val_rmse": 15.474945068359375,
+  "total_time_seconds": 122.03416800498962,
   "history": [
     {
       "epoch": 1,
-      "train_loss": 123.7851,
+      "train_loss": 123.7853,
       "train_rmse": 15.5285,
-      "val_loss": 119.7354,
+      "val_loss": 119.7388,
       "val_rmse": 15.5258,
       "val_mae": 13.4197,
       "val_bias": -13.4197,
       "mean_uncertainty": 0.9915,
-      "elapsed_s": 26.94
+      "elapsed_s": 44.63
     },
     {
       "epoch": 2,
-      "train_loss": 96.6756,
-      "train_rmse": 15.499,
-      "val_loss": 102.9761,
-      "val_rmse": 15.5112,
-      "val_mae": 13.4049,
-      "val_bias": -13.4049,
-      "mean_uncertainty": 1.0545,
-      "elapsed_s": 21.2
+      "train_loss": 92.0809,
+      "train_rmse": 15.492,
+      "val_loss": 93.9428,
+      "val_rmse": 15.5007,
+      "val_mae": 13.3944,
+      "val_bias": -13.3944,
+      "mean_uncertainty": 1.0943,
+      "elapsed_s": 38.46
+    },
+    {
+      "epoch": 3,
+      "train_loss": 64.1722,
+      "train_rmse": 15.443,
+      "val_loss": 76.2712,
+      "val_rmse": 15.4749,
+      "val_mae": 13.3681,
+      "val_bias": -13.3681,
+      "mean_uncertainty": 1.1997,
+      "elapsed_s": 38.79
     }
   ]
 }

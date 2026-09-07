@@ -573,97 +573,66 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', padding: '16px 24px 32px 24px', maxWidth: '1650px', margin: '0 auto' }}>
-      
-      {/* ── TOP HEADER ──────────────────────────────────────────────────────── */}
-      <header className="glass-card" style={{ padding: '14px 22px', marginBottom: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-          <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'linear-gradient(135deg, #00f0ff, #10b981)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 22px rgba(0,240,255,0.45)' }}>
-            <span style={{ fontSize: '24px' }}>🌊</span>
-          </div>
+
+      {/* ── TOP NAVBAR ──────────────────────────────────────────────────────── */}
+      <header style={{
+        background: 'var(--bg-topbar, #070d1c)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-md)',
+        padding: '0 22px',
+        marginBottom: '16px',
+        height: '60px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: '14px',
+        position: 'sticky',
+        top: '8px',
+        zIndex: 100,
+        backdropFilter: 'blur(12px)',
+      }}>
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '22px' }}>🌊</span>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <h1 style={{ fontSize: '22px', fontWeight: '800', letterSpacing: '-0.5px', color: '#ffffff' }}>OceanEmbed</h1>
-              <span className="badge-neon">v2.4 SOTA</span>
-            </div>
-            <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: '2px' }}>
-              Continuous 3D Subsurface Ocean Temperature, Stratification & Cyclone Inversion Suite
-            </p>
+            <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--accent-teal)', letterSpacing: '-0.3px', lineHeight: 1 }}>OceanEmbed</div>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '1px' }}>From Space to Subsurface · AI-driven 3D Ocean Reconstruction</div>
           </div>
+        </div>
+        {/* Center nav */}
+        <div style={{ display: 'flex', gap: '2px' }}>
+          {['Home','Explore','Methodology','Validation','About'].map((lnk, i) => (
+            <button key={lnk} style={{
+              padding: '6px 14px', fontSize: '13px', fontWeight: i===0?'600':'400',
+              color: i===0 ? 'var(--accent-teal)' : 'var(--text-secondary)',
+              background: i===0 ? 'rgba(0,212,255,0.08)' : 'none',
+              border: 'none', borderRadius: '6px', cursor: 'pointer',
+              borderBottom: i===0 ? '2px solid var(--accent-teal)' : '2px solid transparent',
+            }}>{lnk}</button>
+          ))}
+        </div>
+        {/* Right: system badge + actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'6px', background:'rgba(0,200,83,0.1)', border:'1px solid rgba(0,200,83,0.3)', padding:'5px 12px', borderRadius:'20px', fontSize:'12px', fontWeight:'600', color:'#00c853' }}>
+            <span style={{ width:'7px', height:'7px', borderRadius:'50%', background:'#00c853', boxShadow:'0 0 6px #00c853', display:'inline-block' }}></span>
+            System Online
+          </div>
+          <div style={{ fontSize:'11px', color:'var(--text-muted)', textAlign:'right', lineHeight:'1.3' }}>Deeper Insights.<br/>A Safer Ocean.</div>
         </div>
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => setShowUserGuide(!showUserGuide)}
-            style={{
-              background: showUserGuide ? 'rgba(0,240,255,0.2)' : 'rgba(255,255,255,0.06)',
-              color: showUserGuide ? '#00f0ff' : '#cbd5e1',
-              border: `1px solid ${showUserGuide ? '#00f0ff' : 'rgba(255,255,255,0.12)'}`,
-              padding: '8px 14px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <span>ℹ️ User Guide</span>
+          <button onClick={() => setShowUserGuide(!showUserGuide)} className="btn-ghost">
+            ℹ️ Guide
           </button>
-
-          <button
-            onClick={() => setIsPlayingSeason(!isPlayingSeason)}
-            style={{
-              background: isPlayingSeason ? 'rgba(244,63,94,0.18)' : 'rgba(0,240,255,0.14)',
-              color: isPlayingSeason ? '#f43f5e' : '#00f0ff',
-              border: `1px solid ${isPlayingSeason ? 'rgba(244,63,94,0.5)' : 'rgba(0,240,255,0.4)'}`,
-              padding: '8px 16px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '700',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            <span>{isPlayingSeason ? '⏸ Pause Monsoon Cycle' : '▶ Play Monsoon Cycle'}</span>
+          <button onClick={() => setIsPlayingSeason(!isPlayingSeason)} className={isPlayingSeason ? 'btn-ghost' : 'btn-teal'}>
+            {isPlayingSeason ? '⏸ Pause' : '▶ Monsoon Cycle'}
           </button>
-
-          <button
-            onClick={downloadCSV}
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              color: '#e2e8f0',
-              border: '1px solid rgba(255,255,255,0.12)',
-              padding: '8px 14px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-            }}
-          >
-            📥 Export CSV
-          </button>
-
-          <button
-            onClick={downloadJSON}
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              color: '#e2e8f0',
-              border: '1px solid rgba(255,255,255,0.12)',
-              padding: '8px 14px',
-              borderRadius: '20px',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-            }}
-          >
-            📥 Export JSON
-          </button>
+          <button onClick={downloadCSV} className="btn-ghost">📥 CSV</button>
+          <button onClick={downloadJSON} className="btn-ghost">📥 JSON</button>
         </div>
       </header>
+
 
       {/* ── USER GUIDE / QUICK HELP DRAWER ─────────────────────────────────── */}
       {showUserGuide && (
@@ -825,70 +794,48 @@ export default function App() {
 
       </div>
 
-      {/* ── MAIN WORKSPACE GRID: TOTAL LEFT SIDE NAVIGATION + RIGHT WORKSPACE ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: '16px', alignItems: 'start' }}>
-        
-        {/* ── TOTAL LEFT SIDE: 5 VERTICAL MODULE SWITCH ROWS ─────────────────── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div style={{ fontSize: '12px', fontWeight: '800', color: '#00f0ff', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '2px' }}>
-            📂 Navigation Modules:
-          </div>
+      {/* ── MAIN WORKSPACE: sidebar nav + content ──────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '196px 1fr 300px', gap: '16px', alignItems: 'start' }}>
 
+        {/* ── LEFT SIDEBAR — exact match to screenshot ─────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', position: 'sticky', top: '80px',
+          background: 'var(--bg-sidebar, #080f1e)', borderRadius: '10px', padding: '10px 8px', border: '1px solid var(--border)' }}>
           {[
-            { id: 'overview', icon: '📊', label: '1. 3D Thermal Inversion Profile', desc: 'Continuous depth inversion (0–2000m) with ±1σ uncertainty' },
-            { id: 'map_sensors', icon: '🗺️', label: '2. Ocean Basin Map & Sensor Lab', desc: 'Interactive domain with satellite outage simulator' },
-            { id: 'cyclone', icon: '🎯', label: '3. Cyclone Heat (TCHP) & Marine Heatwaves', desc: 'Upper-ocean heat content & cyclone intensification' },
-            { id: 'transect', icon: '🌊', label: '4. 2D Basin Zonal Transect', desc: 'Depth-longitude cross-section across 45°E–105°E' },
-            { id: 'argo', icon: '🎯', label: '5. ARGO In-Situ CTD Matchup', desc: 'Real-world physical CTD profiling float validation' },
-          ].map(tab => {
+            { id: 'overview',    icon: '🏠', label: 'Explore Ocean' },
+            { id: 'cyclone',     icon: '🎯', label: '3D Analysis' },
+            { id: 'map_sensors', icon: '🛰️', label: 'Satellite Data' },
+            { id: 'argo',        icon: '🔴', label: 'ARGO Validation' },
+            { id: '_downloads',  icon: '⬇️', label: 'Downloads' },
+            { id: '_learn',      icon: '📖', label: 'Learn' },
+            { id: '_settings',   icon: '⚙️', label: 'Settings' },
+          ].map((tab, i) => {
             const isActive = activeDashboard === tab.id
+            const isNavGroup = i === 4
             return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveDashboard(tab.id)}
-                className="glass-card"
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '14px 16px',
-                  background: isActive
-                    ? 'linear-gradient(135deg, rgba(0, 240, 255, 0.22) 0%, rgba(16, 185, 129, 0.16) 100%)'
-                    : 'linear-gradient(135deg, rgba(14, 25, 52, 0.75) 0%, rgba(8, 16, 36, 0.65) 100%)',
-                  color: isActive ? '#00f0ff' : '#e2e8f0',
-                  border: isActive ? '1.5px solid #00f0ff' : '1px solid rgba(255, 255, 255, 0.08)',
-                  boxShadow: isActive ? '0 0 20px rgba(0, 240, 255, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12)' : '0 4px 15px rgba(0, 0, 0, 0.3)',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <span style={{ fontSize: '22px' }}>{tab.icon}</span>
-                  <div>
-                    <div style={{ fontSize: '14px', fontWeight: isActive ? '800' : '700', color: isActive ? '#00f0ff' : '#ffffff' }}>
-                      {tab.label}
-                    </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      {tab.desc}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {isActive ? (
-                    <span className="badge-neon" style={{ fontSize: '9px', padding: '2px 6px' }}>ACTIVE</span>
-                  ) : (
-                    <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>➔</span>
-                  )}
-                </div>
-              </button>
+              <div key={tab.id}>
+                {isNavGroup && <div style={{ height: '1px', background: 'var(--border)', margin: '6px 4px' }} />}
+                <button
+                  onClick={() => !tab.id.startsWith('_') && setActiveDashboard(tab.id)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    padding: '9px 12px', width: '100%', textAlign: 'left',
+                    background: isActive ? 'rgba(26,107,196,0.25)' : 'none',
+                    color: isActive ? '#60a5fa' : 'var(--text-secondary)',
+                    border: isActive ? '1px solid rgba(26,107,196,0.4)' : '1px solid transparent',
+                    borderRadius: '6px', cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+                    fontSize: '13px', fontWeight: isActive ? '600' : '500', transition: 'all 0.15s',
+                  }}
+                >
+                  <span style={{ fontSize: '15px', width: '18px', textAlign: 'center' }}>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </button>
+              </div>
             )
           })}
         </div>
 
-        {/* ── RIGHT WORKSPACE: ACTIVE DASHBOARD DISPLAY & COPILOT ─────────────── */}
+
+        {/* ── CENTER: Active Module Content ───────────────────────────────── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           
           {/* Active Dashboard Container */}
@@ -1712,6 +1659,71 @@ export default function App() {
             <p style={{ color: '#cbd5e1', fontSize: '13px', lineHeight: '1.6' }}>
               {aiBriefing.text}
             </p>
+          </div>
+
+        </div>
+
+        {/* ── RIGHT PANEL: Grid Location + Quick Stats ─────────────────────── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'sticky', top: '80px' }}>
+
+          {/* Grid Location */}
+          <div className="glass-card" style={{ padding: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '12px' }}>Grid Location</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+              <button style={{ padding: '8px 12px', background: 'var(--accent-teal)', color: '#000', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>Select on Map</button>
+              <button style={{ padding: '8px 12px', background: 'none', color: 'var(--text-secondary)', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '11px', cursor: 'pointer' }}>Enter Coordinates</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+              <div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>Latitude (°N)</div>
+                <input type="number" value={lat} onChange={e => setLat(Number(e.target.value))} step="0.5"
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px', color: '#fff', fontSize: '13px', fontFamily: 'JetBrains Mono', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '4px' }}>Longitude (°E)</div>
+                <input type="number" value={lon} onChange={e => setLon(Number(e.target.value))} step="0.5"
+                  style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px 10px', color: '#fff', fontSize: '13px', fontFamily: 'JetBrains Mono', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <button style={{ width: '100%', padding: '9px', background: 'rgba(0,212,255,0.12)', color: 'var(--accent-teal)', border: '1px solid rgba(0,212,255,0.3)', borderRadius: '6px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+              🔍 Locate Grid
+            </button>
+            <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center' }}>Snaps to nearest deterministic demo grid.</div>
+          </div>
+
+          {/* Quick Stats */}
+          <div className="glass-card" style={{ padding: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '12px' }}>Quick Stats (Selected Grid)</div>
+            {[
+              { icon: '🌡️', label: 'SST (°C)',              value: thermoMetrics.surfaceTemp, color: 'var(--accent-amber)' },
+              { icon: '🧂', label: 'SSS (PSU)',              value: '33.8',                    color: 'var(--accent-teal)' },
+              { icon: '📈', label: 'Sea Level Anomaly (cm)', value: '+8.5',                    color: 'var(--accent-green)' },
+              { icon: '💨', label: 'Wind Stress (N/m²)',     value: '0.12',                    color: 'var(--accent-purple)' },
+            ].map(stat => (
+              <div key={stat.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  <span>{stat.icon}</span><span>{stat.label}</span>
+                </div>
+                <span style={{ fontSize: '16px', fontWeight: '700', color: stat.color, fontFamily: 'JetBrains Mono' }}>{stat.value}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* 3D Subsurface Temperature */}
+          <div className="glass-card" style={{ padding: '16px' }}>
+            <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '4px' }}>3D Subsurface Temperature</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '12px' }}>📍 Location: {lat}°N, {lon}°E</div>
+            <div style={{ height: '80px', borderRadius: '8px', background: 'linear-gradient(180deg, #ef4444 0%, #f97316 25%, #eab308 50%, #22c55e 75%, #3b82f6 100%)', position: 'relative', marginBottom: '8px' }}>
+              <div style={{ position: 'absolute', top: '4px', left: '8px', fontSize: '10px', color: 'rgba(255,255,255,0.8)' }}>0m (Surface)</div>
+              <div style={{ position: 'absolute', bottom: '4px', left: '8px', fontSize: '10px', color: 'rgba(255,255,255,0.8)' }}>2000m</div>
+              <div style={{ position: 'absolute', right: '8px', top: '4px', fontSize: '11px', color: '#ef4444', fontWeight: '700', fontFamily: 'JetBrains Mono' }}>30°C</div>
+              <div style={{ position: 'absolute', right: '8px', bottom: '4px', fontSize: '11px', color: '#3b82f6', fontWeight: '700', fontFamily: 'JetBrains Mono' }}>4°C</div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: 'var(--text-muted)' }}>
+              <span>D20: <strong style={{ color: 'var(--accent-teal)' }}>{thermoMetrics.d20}m</strong></span>
+              <span>MLD: <strong style={{ color: 'var(--accent-purple)' }}>{thermoMetrics.mld}m</strong></span>
+              <span>TCHP: <strong style={{ color: 'var(--accent-coral)' }}>{cycloneMetrics.tchp} kJ</strong></span>
+            </div>
           </div>
 
         </div>
